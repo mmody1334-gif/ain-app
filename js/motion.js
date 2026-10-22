@@ -388,6 +388,16 @@ export function detectBuiltinShape(p, extIn, tdistIn) {
   const pinch = Math.hypot(p[12] - p[24], p[13] - p[25], p[14] - p[26]);
   if (pinch < 0.34 && ne[2] > 0.55 && ne[3] > 0.55 && ne[4] > 0.55) return { id: 'shape_ok', name: 'دائرة O', conf: 0.95 };
 
+  // الإبهام المرفوع قد تُقرأ السبابة فيه «مفرودة» خطأً بسبب انثناء المشط؛
+  // نقارن بُعد طرف الإبهام عن المعصم ببُعد طرف السبابة: في الإبهام المرفوع
+  // الإبهام هو البعيد، وفي السبابة المرفوعة العكس.
+  const st = fingerStates(p, ext, tdist);
+  const thumbD = Math.hypot(p[12], p[13], p[14]);
+  const indexD = Math.hypot(p[24], p[25], p[26]);
+  if (st[0] === 'E' && thumbD > indexD * 1.15 && st[2] !== 'E' && st[3] !== 'E' && st[4] !== 'E') {
+    return { id: 'shape_thumb', name: 'إبهام مرفوع', conf: 0.92 };
+  }
+
   let best = null;
   const scores = [];
   for (const s of BUILTIN_SHAPES) {
