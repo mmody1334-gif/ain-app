@@ -444,6 +444,8 @@ export function createDictView(app) {
     show() {
       renderList();
       if (app.pendingNew) { const p = app.pendingNew; app.pendingNew = null; openRecorder({ word: p.word }); }
+      // من الكورس: فتح مسجّل حرف مباشرة
+      if (app.pendingRecord) { const r = app.pendingRecord; app.pendingRecord = null; openRecorder({ letter: r.letter, name: r.name, word: r.letter }); }
     },
     hide() {},
   };

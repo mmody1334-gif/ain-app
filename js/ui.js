@@ -28,6 +28,13 @@ const ICONS = {
   cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  bookmark: '<path d="M7 3h10a1 1 0 011 1v17l-6-4.5L6 21V4a1 1 0 011-1z"/>',
+  heart: '<path d="M12 20l-7.2-7a4.7 4.7 0 016.7-6.6l.5.5.5-.5a4.7 4.7 0 016.7 6.6z"/>',
+  full: '<path d="M4 9V5a1 1 0 011-1h4M20 9V5a1 1 0 00-1-1h-4M4 15v4a1 1 0 001 1h4M20 15v4a1 1 0 01-1 1h-4"/>',
+  shrink: '<path d="M9 4v4a1 1 0 01-1 1H4M15 4v4a1 1 0 001 1h4M9 20v-4a1 1 0 00-1-1H4M15 20v-4a1 1 0 011-1h4"/>',
+  book: '<path d="M4 19V5a2 2 0 012-2h14v18H6a2 2 0 01-2-2z"/><path d="M9 7h7M9 11h7"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  spell: '<path d="M4 18L8.2 6l4.2 12M5.8 14h4.8M17.5 8.5c1.4 0 2.5 1 2.5 2.4s-1.1 2.4-2.5 2.4H17h.5c1.4 0 2.5 1 2.5 2.3s-1.1 2.4-2.5 2.4c-1 0-2-.3-2.5-1"/>',
 };
 
 export function icon(name, cls = '') {

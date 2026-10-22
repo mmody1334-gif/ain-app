@@ -1,8 +1,45 @@
-// ترجمة: الكاميرا ترى الإشارة، والتطبيق ينطقها ويكوّن جملة.
-import { h, btn, icon } from '../ui.js';
+// ترجمة: الكاميرا ترى الإشارة، والتطبيق ينطقها ويكوّن جملة. ومعها مفضلة وسجل للجمل.
+import { h, btn, icon, toast } from '../ui.js';
+
+const MAX_HIST = 30;
 
 export function createTranslateView(app) {
-  let root, slot, bigEl, sentEl, tipEl, words = [], off = null, activeEl = null, camBtn;
+  let root, slot, bigEl, sentEl, tipEl, words = [], off = null, activeEl = null, camBtn, favEl, histEl;
+  let saved = { favs: [], hist: [] };
+
+  async function loadSent() { saved = { favs: [], hist: [], ...(await app.store.getMeta('sentences', null)) }; }
+  async function saveSent() { await app.store.setMeta('sentences', saved); renderSaved(); }
+  const textOf = (s) => s.words.map((w) => w.text).join(' ');
+
+  function loadSentence(s, speak = false) {
+    words = s.words.map((w) => ({ ...w }));
+    bigEl.textContent = words.length ? words[words.length - 1].text : '';
+    renderSentence();
+    if (speak && words.length) app.say(textOf(s));
+  }
+
+  function renderSaved() {
+    if (!favEl || !histEl) return;
+    favEl.innerHTML = '';
+    histEl.innerHTML = '';
+    if (!saved.favs.length) { favEl.append(h('p.small.muted', 'لا جمل مفضلة بعد. كوّن جملة من الإشارات ثم اضغط زر النجمة لتحفظها.')); }
+    else {
+      const list = h('div.list');
+      saved.favs.forEach((s, i) => list.append(h('div.item',
+        h('div.grow', h('button.ttl', { style: { border: 0, background: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'start', font: 'inherit', padding: 0 }, onclick: () => loadSentence(s, true) }, s.text.split(' ').slice(0, 6).join(' ')), h('div.meta', `${s.words.length} كلمة`)),
+        h('button.iconbtn', { 'aria-label': 'انطق', onclick: () => app.say(textOf(s)) }, icon('speaker')),
+        h('button.iconbtn', { 'aria-label': 'حذف من المفضلة', onclick: async () => { saved.favs.splice(i, 1); await saveSent(); } }, icon('heart')))));
+      favEl.append(list);
+    }
+    if (!saved.hist.length) { histEl.append(h('p.small.muted', 'كل جملة تُنطق تُسجَّل هنا تلقائيًا.')); }
+    else {
+      const list = h('div.list');
+      saved.hist.forEach((s, i) => list.append(h('div.item',
+        h('div.grow', h('button.ttl', { style: { border: 0, background: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'start', font: 'inherit', padding: 0 }, onclick: () => loadSentence(s, true) }, s.text.split(' ').slice(0, 6).join(' ')), h('div.meta', `${s.words.length} كلمة`)),
+        h('button.iconbtn', { 'aria-label': 'أضف للمفضلة', onclick: async () => { if (!saved.favs.some((f) => f.text === s.text)) { saved.favs.unshift({ words: s.words, text: s.text, at: Date.now() }); await saveSent(); } toast('أُضيفت للمفضلة', 'ok'); } }, icon('star')))));
+      histEl.append(list);
+    }
+  }
 
   function renderSentence() {
     sentEl.innerHTML = '';
@@ -23,6 +60,27 @@ export function createTranslateView(app) {
     }
   }
 
+  /** تسجيل الجملة في السجل عند نطقها: بلا تكرار متتالٍ، وآخر 30 جملة فقط. */
+  async function recordHistory() {
+    if (!words.length) return;
+    const s = { words: words.map((w) => ({ ...w })), text: textOf({ words }), at: Date.now() };
+    if (saved.hist.length && saved.hist[0].text === s.text) return;
+    saved.hist.unshift(s);
+    if (saved.hist.length > MAX_HIST) saved.hist.length = MAX_HIST;
+    await app.store.setMeta('sentences', saved);
+    renderSaved();
+  }
+
+  async function saveFav() {
+    if (!words.length) { toast('لا جملة لحفظها.', 'bad'); return; }
+    const s = { words: words.map((w) => ({ ...w })), text: textOf({ words }), at: Date.now() };
+    if (saved.favs.some((f) => f.text === s.text)) { toast('الجملة في المفضلة بالفعل', ''); return; }
+    saved.favs.unshift(s);
+    await app.store.setMeta('sentences', saved);
+    renderSaved();
+    toast('حُفظت «' + s.text.split(' ').slice(0, 4).join(' ') + '…» في المفضلة', 'ok');
+  }
+
   function renderTip() {
     const n = app.signs.length;
     tipEl.innerHTML = '';
@@ -40,12 +98,18 @@ export function createTranslateView(app) {
       bigEl = h('div.bigword', { 'aria-live': 'polite' }, '');
       sentEl = h('div.sentence', { 'aria-live': 'polite' });
       tipEl = h('div');
+      favEl = h('div');
+      histEl = h('div');
       camBtn = null;
       const actions = h('div.row',
-        btn('انطق الجملة', { ic: 'speaker', cls: 'primary grow', onclick: () => { const t = words.map((w) => w.text).join(' '); if (t) app.say(t); } }),
+        btn('انطق الجملة', { ic: 'speaker', cls: 'primary grow', onclick: () => { const t = words.map((w) => w.text).join(' '); if (t) { app.say(t); recordHistory(); } } }),
+        btn('', { ic: 'star', cls: 'ghost', title: 'احفظ في المفضلة', onclick: saveFav }),
         btn('', { ic: 'undo', cls: 'ghost', title: 'تراجع', onclick: () => { words.pop(); renderSentence(); } }),
         btn('', { ic: 'trash', cls: 'ghost', title: 'مسح', onclick: () => { words = []; bigEl.textContent = ''; renderSentence(); } }));
-      root.append(slot, bigEl, sentEl, actions, tipEl);
+      root.append(slot, bigEl, sentEl, actions, tipEl,
+        h('div.card', h('h2', 'جملي المفضلة'), favEl),
+        h('div.card', h('h2', 'السجل'), histEl));
+      loadSent().then(renderSaved);
       renderSentence();
       app.on('camera', renderTip);
       app.on('signs', renderTip);
@@ -55,7 +119,8 @@ export function createTranslateView(app) {
       app.cam.showSkeleton = app.settings.skeleton;
       off = app.cam.onFrame(onEvent);
       renderTip();
+      renderSaved();
     },
-    hide() { off?.(); off = null; app.unmountStage(); },
+    hide() { off?.(); off = null; app.unmountStage(); recordHistory(); },
   };
 }

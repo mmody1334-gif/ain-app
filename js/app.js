@@ -16,6 +16,7 @@ import { createListenView } from './views/listen.js';
 import { createLearnView } from './views/learn.js';
 import { createDictView } from './views/dict.js';
 import { createCommandsView } from './views/commands.js';
+import { createCourseView } from './views/course.js';
 
 const DEFAULT_SETTINGS = {
   holdSec: 0.6, speakEach: true, rate: 0.92, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
@@ -28,6 +29,7 @@ const AMBIGUOUS_STARTER = ['builtin_one', 'builtin_two', 'builtin_three', 'built
 const TABS = [
   { id: 'translate', label: 'ترجمة', ic: 'translate', make: createTranslateView, camera: true },
   { id: 'listen', label: 'اسمع', ic: 'listen', make: createListenView, camera: false },
+  { id: 'course', label: 'دروس', ic: 'book', make: createCourseView, camera: true },
   { id: 'learn', label: 'تعلّم', ic: 'learn', make: createLearnView, camera: true },
   { id: 'dict', label: 'قاموسي', ic: 'dict', make: createDictView, camera: false },
   { id: 'commands', label: 'أوامر', ic: 'bolt', make: createCommandsView, camera: true },
@@ -93,6 +95,8 @@ class App {
     // معايرة يد المستخدم قبل بناء النموذج، حتى تُحسب بوابة الأصابع على يده
     this.calib = await this.store.getMeta('calib', null);
     setFingerCalibration(this.calib);
+    // زر تثبيت التطبيق: beforeinstallprompt يصل مرة واحدة قبل القرار
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); this.installEvent = e; this.emit('install'); });
     this.applyTheme();
     this.stage = document.getElementById('stage');
     this.cam = new CameraHub(this.engine, { video: this.stage.querySelector('video'), overlay: this.stage.querySelector('canvas.overlay') });
@@ -285,12 +289,21 @@ class App {
   buildStage() {
     const st = this.stage;
     const tools = st.querySelector('.tools');
+    const full = h('button.iconbtn', { 'aria-label': 'ملء الشاشة', onclick: () => this.toggleStageFull() }, icon('full'));
     const flip = h('button.iconbtn', { 'aria-label': 'قلب الكاميرا', onclick: async () => { await this.cam.flip(); this.updateStage(); } }, icon('flip'));
     const off = h('button.iconbtn', { 'aria-label': 'إيقاف الكاميرا', onclick: () => this.stopCamera() }, icon('x'));
-    tools.append(flip, off);
+    tools.append(full, flip, off);
+    this.fullBtn = full;
     st.querySelector('[data-act="start-cam"]').onclick = () => this.startCamera();
     this.cam.onFrame((out) => this.onStageFrame(out));
     this.updateStage();
+  }
+
+  /** تكبير مسرح الكاميرا على كامل الشاشة: يُعاد ضبط الـcanvas تلقائيًا لأن الرسم يقيس العميل كل إطار. */
+  toggleStageFull() {
+    const on = this.stage.classList.toggle('focus');
+    this.fullBtn.replaceChildren(icon(on ? 'shrink' : 'full'));
+    this.fullBtn.setAttribute('aria-label', on ? 'إخراج من ملء الشاشة' : 'ملء الشاشة');
   }
 
   /** يضع المسرح داخل حاوية القسم الحالي. */
@@ -379,6 +392,22 @@ class App {
 
   builtinName(id) { return BUILTIN_NAMES[id] || null; }
 
+  /** بطاقة التثبيت: زر «ثبّت» عند توفر الحدث، وتعليمات سافاري على آيفون، ولا شيء على Chrome المثبّت أصلًا. */
+  installCard() {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !(navigator.standalone);
+    const standalone = matchMedia?.('(display-mode: standalone)').matches || navigator.standalone;
+    if (standalone) return h('p.small.muted.okhint', 'التطبيق مثبّت على جهازك ✓');
+    if (this.installEvent) {
+      return h('div.row',
+        btn('ثبّت التطبيق على جهازك', { cls: 'primary', ic: 'download', onclick: async () => {
+          try { await this.installEvent.prompt(); await this.installEvent.userChoice; this.installEvent = null; this.emit('install'); toast('تم التثبيت', 'ok'); } catch (e) { /* لا شيء */ }
+        } }),
+        h('p.small.muted', 'يُثبَّت التطبيق على الشاشة الرئيسية ويعمل كاملاً بلا إنترنت بعدها.'));
+    }
+    if (ios) return h('p.small.muted', 'لتثبيت التطبيق على الآيفون: في سافاري اضغط زر «مشاركة» ثم «إضافة إلى الشاشة الرئيسية».');
+    return h('p.small.muted', 'يمكن تثبيت التطبيق على الشاشة الرئيسية من قائمة المتصفح (تثبيت/إضافة إلى الشاشة الرئيسية).');
+  }
+
   // ---------- إعدادات ----------
   openSettings() {
     const s = this.settings;
@@ -424,8 +453,10 @@ class App {
             btn('إعادة الافتراضي', { cls: 'ghost sm', onclick: async () => { setFingerCalibration(null); this.calib = null; await this.store.setMeta('calib', null); await this.retrain(); toast('أُعيدت العتبات الافتراضية'); } }))),
         h('div.card', h('h2', 'كشف اليد'), h('div.field', h('span.muted.small', 'محرّك الكشف'), det), h('p.small.muted', { dir: 'ltr', style: { textAlign: 'left', wordBreak: 'break-word' } }, diagText), h('p.small.muted', 'إن لم تظهر نقاط يدك: بدّل المحرّك أعلاه، وأرسل لي هذا السطر.')),
         h('div.card', h('h2', 'حول التطبيق'), h('p.small.muted', 'كل المعالجة تتم داخل جهازك: الكاميرا والتدريب والتخزين. لا حساب ولا خادم. صدّر قاموسك من «قاموسي» لتحتفظ بنسخة أو تنقله إلى الحاسوب.'),
-          h('p.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي) تعمل بقواعد على نقاط اليد بلا تدريب.'),
-          h('p.small.muted', 'يمكنك تسجيل إشارات بيدين، والأبجدية العربية من «قاموسي». ويقيس التطبيق موقع اليد بالنسبة للكتفين لتمييز الإشارات المتشابهة في شكل اليد.')),
+          this.installCard(),
+          h('div.row', h('span.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي) تعمل بقواعد على نقاط اليد بلا تدريب.')),
+          h('p.small.muted', 'يمكنك تسجيل إشارات بيدين، والأبجدية العربية من «قاموسي». ويقيس التطبيق موقع اليد بالنسبة للكتفين لتمييز الإشارات المتشابهة في شكل اليد.'),
+          h('p.small.muted', 'دروس تعلم لغة الإشارة جاهزة في قسم «دروس»، مع تمرين الأبجدية المتسلسل في «تعلّم»، وجمل مفضلة وسجل في «ترجمة».')),
         btn('إغلاق', { cls: 'primary block', onclick: close }));
     });
   }
