@@ -3,7 +3,7 @@
 
 import { SignClassifier } from './classifier.js';
 import { PairModel } from './pairmodel.js';
-import { HandTracker, MotionSegmenter, MotionBank, segmentToSeq, detectBuiltinMotion, detectBuiltinShape, fingerStates } from './motion.js';
+import { HandTracker, MotionSegmenter, MotionBank, segmentToSeq, detectBuiltinMotion, detectBuiltinShape, fingerStates, BUILTIN_SHAPES } from './motion.js';
 import { POSE_LEN, FEATURE_LEN, FEATURE_LEN2, pairToFeatures, mirrorPose, bodyAnchor, wristLocation } from './features.js';
 
 /** نموذج الإشارة المخزَّنة:
@@ -94,6 +94,20 @@ export class Engine {
       for (const sm of g.samples) fingerStates(sm.p).forEach((st, i) => cnt[i][st]++);
       const n = g.samples.length;
       this.sig.set(g.label, cnt.map((c) => (c.C / n <= 0.03 && c.E / n >= 0.8 ? 'E' : c.E / n <= 0.03 && c.C / n >= 0.8 ? 'C' : null)));
+    }
+    // أي شكل جاهز يطابق بصمة إشارة مسجّلة لا يُستعمل كبديل: الإشارة المسجّلة أولى،
+    // وإلا ظهر «واحد» لشخص يشير بالسبابة ضمن إشارته «أنت».
+    this.shapeConflict = new Set();
+    for (const sh of BUILTIN_SHAPES) {
+      for (const g of data1) {
+        const sig = this.sig.get(g.label);
+        if (!sig) continue;
+        let match = true;
+        for (let i = 0; i < 5; i++) {
+          if (sh.pattern[i] !== '?' && sig[i] && sig[i] !== sh.pattern[i]) { match = false; break; }
+        }
+        if (match) { this.shapeConflict.add(sh.id); break; }
+      }
     }
     let loaded1 = false, loaded2 = false;
     if (data1.length >= 1) {
@@ -232,7 +246,7 @@ export class Engine {
       for (const f of frames) {
         const sh = detectBuiltinShape(f.p, f.ext, f.tdist);
         out.shape = sh;
-        if (sh) { cand = { key: 'builtin:' + sh.id, kind: 'shape', id: sh.id, sign: this.byRule.get(sh.id) || null, conf: sh.conf ?? 1 }; break; }
+        if (sh && !this.shapeConflict.has(sh.id)) { cand = { key: 'builtin:' + sh.id, kind: 'shape', id: sh.id, sign: this.byRule.get(sh.id) || null, conf: sh.conf ?? 1 }; break; }
       }
     }
     const h = this.hold;

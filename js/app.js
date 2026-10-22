@@ -21,6 +21,10 @@ const DEFAULT_SETTINGS = {
   holdSec: 0.6, speakEach: true, rate: 0.92, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
 };
 
+// إشارات جاهزة أُضيفت سابقاً للأرقام ثم أُزيلت: أشكالها تتعارض مع إشارات
+// «أنا/أنت/واحد» اليومية، فبقيت متاحة في مكتبة «جاهزة» لمن يريد ربطها.
+const AMBIGUOUS_STARTER = ['builtin_one', 'builtin_two', 'builtin_three', 'builtin_four', 'builtin_five'];
+
 const TABS = [
   { id: 'translate', label: 'ترجمة', ic: 'translate', make: createTranslateView, camera: true },
   { id: 'listen', label: 'اسمع', ic: 'listen', make: createListenView, camera: false },
@@ -105,6 +109,15 @@ class App {
     const seeded = await this.store.getMeta('seeded', false);
     const applied = await this.store.getMeta('starterVersion', 0);
     const seenStarter = await this.store.getMeta('starterSeen', null);
+    // إزالة الأرقام الجاهزة القديمة (كانت تظهر «واحد» عند الإشارة بالسبابة)
+    if (signs.length && applied < 4) {
+      const rm = new Set(AMBIGUOUS_STARTER);
+      const removed = signs.filter((s) => rm.has(s.id) && s.source === 'starter');
+      if (removed.length) {
+        for (const s of removed) await this.store.deleteSign(s.id);
+        signs = signs.filter((s) => !rm.has(s.id) || s.source !== 'starter');
+      }
+    }
     if (!signs.length && !seeded && starter.signs.length) {
       signs = starter.signs;
       for (const s of signs) await this.store.putSign(s);
@@ -411,7 +424,7 @@ class App {
             btn('إعادة الافتراضي', { cls: 'ghost sm', onclick: async () => { setFingerCalibration(null); this.calib = null; await this.store.setMeta('calib', null); await this.retrain(); toast('أُعيدت العتبات الافتراضية'); } }))),
         h('div.card', h('h2', 'كشف اليد'), h('div.field', h('span.muted.small', 'محرّك الكشف'), det), h('p.small.muted', { dir: 'ltr', style: { textAlign: 'left', wordBreak: 'break-word' } }, diagText), h('p.small.muted', 'إن لم تظهر نقاط يدك: بدّل المحرّك أعلاه، وأرسل لي هذا السطر.')),
         h('div.card', h('h2', 'حول التطبيق'), h('p.small.muted', 'كل المعالجة تتم داخل جهازك: الكاميرا والتدريب والتخزين. لا حساب ولا خادم. صدّر قاموسك من «قاموسي» لتحتفظ بنسخة أو تنقله إلى الحاسوب.'),
-          h('p.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي/الأرقام ١–٥) تعمل بقواعد على نقاط اليد بلا تدريب.'),
+          h('p.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي) تعمل بقواعد على نقاط اليد بلا تدريب. الأرقام متاحة من مكتبة «جاهزة» لمن يريد ربطها.'),
           h('p.small.muted', 'يمكنك تسجيل إشارات بيدين، والأبجدية العربية من «قاموسي». ويقيس التطبيق موقع اليد بالنسبة للكتفين لتمييز الإشارات المتشابهة في شكل اليد.')),
         btn('إغلاق', { cls: 'primary block', onclick: close }));
     });
