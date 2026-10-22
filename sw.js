@@ -1,7 +1,7 @@
 // عين — عامل خدمة بسيط: يخزّن واجهة التطبيق ليعمل بلا إنترنت بعد أول زيارة.
-const VERSION = 'ain-v5';
+const VERSION = 'ain-v6';
 const SHELL = ['./', 'index.html', 'css/style.css', 'manifest.webmanifest', 'data/starter.json', 'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png',
-  'js/app.js', 'js/ui.js', 'js/store.js', 'js/engine.js', 'js/camera.js', 'js/speech.js', 'js/arabic.js', 'js/features.js', 'js/classifier.js', 'js/motion.js', 'js/handModel.js', 'js/calibrate.js', 'js/alphabet.js',
+  'js/app.js', 'js/ui.js', 'js/store.js', 'js/engine.js', 'js/camera.js', 'js/speech.js', 'js/arabic.js', 'js/features.js', 'js/classifier.js', 'js/pairmodel.js', 'js/motion.js', 'js/handModel.js', 'js/calibrate.js', 'js/alphabet.js',
   'js/hand3d.js', 'js/anims.js', 'js/learn.js', 'js/recorder.js', 'js/commands.js', 'js/names.js', 'js/pcexport.js',
   'js/views/translate.js', 'js/views/listen.js', 'js/views/learn.js', 'js/views/dict.js', 'js/views/commands.js'];
 const HEAVY = /(cdn\.jsdelivr\.net\/npm\/@mediapipe|storage\.googleapis\.com\/mediapipe-models|\/vendor\/)/;

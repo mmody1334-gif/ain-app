@@ -12,6 +12,16 @@ import { ARABIC_LETTERS, letterProgress, nextMissingLetter } from '../alphabet.j
 const KIND = { static: 'ثابتة', motion: 'متحركة', builtin: 'جاهزة' };
 const FINGER_KEYS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
 
+/** ملخّص مواضع اليد المسجّلة بالنسبة للجسم: مركز + نصف قطر قبول. */
+function locFrom(list) {
+  if (!list || list.length < 8) return null;
+  const med = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
+  const x = med(list.map((p) => p.x)), y = med(list.map((p) => p.y));
+  const ds = list.map((p) => Math.hypot(p.x - x, p.y - y)).sort((a, b) => a - b);
+  const p90 = ds[Math.floor(ds.length * 0.9)];
+  return { x: +x.toFixed(3), y: +y.toFixed(3), r: +Math.max(0.22, Math.min(0.95, p90 * 1.6)).toFixed(3) };
+}
+
 function themeColors() {
   const cs = getComputedStyle(document.documentElement);
   const g = (n, f) => cs.getPropertyValue(n).trim() || f;
@@ -21,7 +31,7 @@ function themeColors() {
 /** تقرير التشابه بين إشارة جديدة وباقي الإشارات. يعيد قائمة أسطر. */
 export function similarityFor(app, sign) {
   const notes = [];
-  if (sign.kind === 'static') {
+  if (sign.kind === 'static' && sign.hands !== 2) {
     const clf = app.engine.clf, data = app.engine.trainData;
     if (!clf || !data || data.length < 2) return notes;
     const seps = pairSeparation(clf, data).filter((p) => p.a === sign.id || p.b === sign.id);
@@ -69,7 +79,9 @@ export function createDictView(app) {
     const signs = app.signs.filter((s) => !q || normalizeAr(s.word).includes(q));
     if (!signs.length) { listEl.append(h('div.empty', app.signs.length ? 'لا نتائج.' : 'القاموس فارغ. اضغط «إشارة جديدة» وسجّل أول إشارة بيدك.')); return; }
     for (const s of signs) {
-      const count = s.kind === 'static' ? `${s.samples?.length || 0} عيّنة` : s.kind === 'motion' ? `${s.takes?.length || 0} لقطات` : (SHAPES.find((x) => x.id === s.rule)?.name || BUILTIN_MOTIONS.find((x) => x.id === s.rule)?.name || '');
+      const count = s.kind === 'static'
+        ? (s.hands === 2 ? `${s.samples2?.length || 0} عيّنة بيدين` : `${s.samples?.length || 0} عيّنة`)
+        : s.kind === 'motion' ? `${s.takes?.length || 0} لقطات` : (SHAPES.find((x) => x.id === s.rule)?.name || BUILTIN_MOTIONS.find((x) => x.id === s.rule)?.name || '');
       listEl.append(h('div.item',
         h('div.grow', h('div.ttl', s.word), h('div.meta', h('span.badge.' + s.kind, KIND[s.kind]), ' ', count, s.source === 'starter' ? ' · من المشروع الأصلي' : '')),
         h('button.iconbtn', { 'aria-label': 'عرض', onclick: () => previewSign(s) }, icon('eye')),
@@ -83,10 +95,11 @@ export function createDictView(app) {
       const canvas = h('canvas');
       const box = h('div.avatar-box', { style: { aspectRatio: '1 / 0.8' } }, canvas, h('div.hint', 'اسحب لتدوير اليد'));
       const a = animOf(s);
-      const desc = s.kind === 'motion' ? describeMotion(s) : (s.ref ? describePose(Float32Array.from(s.ref)) : '');
+      const desc = s.kind === 'motion' ? describeMotion(s) : (s.hands === 2 ? 'إشارة بيدين — تُعرض اليدان في الكاميرا، ويسجّل التطبيق علاقتهما معاً.' : (s.ref ? describePose(Float32Array.from(s.ref)) : ''));
       setTimeout(() => {
         view = new HandView(canvas, { mirror: true, colors: themeColors() });
         if (a) { if (a.frames.length > 1) view.play(a); else view.setPose(a.frames[0].p); }
+        else if (s.hands === 2 && s.samples2?.length) view.setPose(Float32Array.from(s.samples2[0].slice(0, 63)));
       }, 30);
       const notes = similarityFor(app, s);
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, box, h('p.small.muted', desc),
@@ -114,6 +127,9 @@ export function createDictView(app) {
     let word = existing?.word || init.word || letter || '';
     let aliases = existing?.aliases?.join('، ') || (init.name ? init.name : '');
     let samples = [];          // لقطات ثابتة جديدة
+    let samples2 = [];         // لقطات بيدين
+    let locs = [];              // مواضع اليد بالنسبة للجسم أثناء التسجيل
+    let twoHands = existing?.hands === 2 || !!init.twoHands;
     let takes = [], anim = null;
     let busy = false, cancelled = false, stage = 'form', alphaDirty = false;
     const s = sheet(existing ? `إضافة عيّنات: ${existing.word}` : (letter ? `تسجيل حرف «${letter}»` : 'إشارة جديدة'), (close, body) => {
@@ -128,12 +144,17 @@ export function createDictView(app) {
       function renderForm() {
         const wi = h('input', { type: 'text', value: word, placeholder: 'الكلمة أو الجملة القصيرة، مثل: شكراً', oninput: (e) => { word = e.target.value; }, disabled: !!existing || !!letter });
         const al = h('input', { type: 'text', value: aliases, placeholder: 'مرادفات (اختياري)، مفصولة بفاصلة', oninput: (e) => { aliases = e.target.value; }, disabled: !!existing });
-        const seg = h('div.seg', [['static', 'ثابتة (وضعية يد)'], ['motion', 'متحركة (حركة)']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(kind === v), disabled: !!existing || !!letter, onclick: (e) => { kind = v; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); help.textContent = helpText(); } }, l)));
+        const seg = h('div.seg', [['static', 'ثابتة (وضعية يد)'], ['motion', 'متحركة (حركة)']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(kind === v), disabled: !!existing || !!letter, onclick: (e) => { kind = v; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); twoWrap.hidden = kind !== 'static' || !!letter; help.textContent = helpText(); } }, l)));
         const helpText = () => letter
           ? `ثبّت يدك على إشارة حرف «${letter}» (${aliases || ''}) وحرّكها قليلاً أثناء التسجيل.`
-          : kind === 'static' ? 'ثبّت يدك على الوضعية نفسها وحرّكها قليلاً (أقرب/أبعد/ميل بسيط) أثناء التسجيل.' : 'ستكرر الحركة 6 مرات. ابدأ بيدك ساكنة ثم نفّذ الحركة بسلاسة.';
+          : kind === 'static'
+            ? (twoHands ? 'أظهر اليدين معاً على الوضعية وحرّكهما قليلاً أثناء التسجيل.' : 'ثبّت يدك على الوضعية نفسها وحرّكها قليلاً (أقرب/أبعد/ميل بسيط) أثناء التسجيل.')
+            : 'ستكرر الحركة 6 مرات. ابدأ بيدك ساكنة ثم نفّذ الحركة بسلاسة.';
         const help = h('p.small.muted', helpText());
-        content.append(h('label.field', h('span', letter ? `الحرف «${letter}»` : 'الكلمة'), wi), h('label.field', h('span', 'مرادفات'), al), h('div.field', h('span.muted.small', 'نوع الإشارة'), seg), help,
+        const twoInput = h('input', { type: 'checkbox', checked: twoHands, disabled: !!existing, onchange: (e) => { twoHands = e.target.checked; help.textContent = helpText(); } });
+        const twoWrap = h('label.switch', h('span', 'إشارة بيدين (تظهر اليدان معاً)'), twoInput);
+        twoWrap.hidden = kind !== 'static' || !!letter;
+        content.append(h('label.field', h('span', letter ? `الحرف «${letter}»` : 'الكلمة'), wi), h('label.field', h('span', 'مرادفات'), al), h('div.field', h('span.muted.small', 'نوع الإشارة'), seg), twoWrap, help,
           btn('التالي: افتح الكاميرا', { cls: 'primary', ic: 'cam', onclick: () => { if (!word.trim()) { wi.focus(); toast('اكتب الكلمة أولاً', 'bad'); return; } stage = 'capture'; render(); } }));
       }
 
@@ -154,12 +175,13 @@ export function createDictView(app) {
           actions.innerHTML = '';
           if (!app.cam.running) { actions.append(btn('شغّل الكاميرا', { cls: 'primary block', ic: 'cam', onclick: async () => { await app.startCamera(); refreshActions(); } })); info.textContent = 'الكاميرا مغلقة.'; return; }
           if (kind === 'static') {
-            const total = (existing?.samples?.length || 0) + samples.length;
-            sumEl.textContent = samples.length ? `التُقطت ${samples.length} عيّنة جديدة${existing ? ` (المجموع ${total})` : ''}. سجّل جلسة ثانية بزاوية أخرى لدقة أعلى.` : '';
-            actions.append(btn(samples.length ? 'جلسة أخرى' : 'ابدأ التسجيل', { cls: samples.length ? 'ghost' : 'primary', ic: 'cam', onclick: doStatic }));
-            if (samples.length >= 25) actions.append(btn('حفظ', { cls: 'primary', ic: 'check', onclick: save }));
-            if (samples.length) actions.append(btn('', { cls: 'ghost', ic: 'trash', title: 'امسح', onclick: () => { samples = []; refreshActions(); setProg(0); info.textContent = ''; } }));
-            if (!samples.length) info.textContent = 'ضع يدك داخل الإطار ثم اضغط «ابدأ».';
+            const have = twoHands ? samples2.length : samples.length;
+            const total = (twoHands ? (existing?.samples2?.length || 0) : (existing?.samples?.length || 0)) + have;
+            sumEl.textContent = have ? `التُقطت ${have} عيّنة جديدة${existing ? ` (المجموع ${total})` : ''}. سجّل جلسة ثانية بزاوية أخرى لدقة أعلى.` : '';
+            actions.append(btn(have ? 'جلسة أخرى' : 'ابدأ التسجيل', { cls: have ? 'ghost' : 'primary', ic: 'cam', onclick: doStatic }));
+            if (have >= (twoHands ? 20 : 25)) actions.append(btn('حفظ', { cls: 'primary', ic: 'check', onclick: save }));
+            if (have) actions.append(btn('', { cls: 'ghost', ic: 'trash', title: 'امسح', onclick: () => { samples = []; samples2 = []; locs = []; refreshActions(); setProg(0); info.textContent = ''; } }));
+            if (!have) info.textContent = twoHands ? 'أظهر اليدين معاً داخل الإطار ثم اضغط «ابدأ».' : 'ضع يدك داخل الإطار ثم اضغط «ابدأ».';
           } else {
             dots.innerHTML = '';
             for (let i = 0; i < 6; i++) dots.append(h('i' + (i < takes.length ? '.on' : i === takes.length ? '.cur' : '')));
@@ -176,11 +198,19 @@ export function createDictView(app) {
           try {
             info.textContent = 'استعد…';
             await countdown(3, setCount);
-            info.textContent = 'ثبّت يدك وحرّكها قليلاً: أقرب، أبعد، ميل بسيط';
-            const r = await captureStatic(app, { seconds: 5.5, target: 75, shouldStop: () => cancelled, onProgress: (n, t, st) => { setProg(n / t); if (st.lost) info.textContent = 'اليد غير ظاهرة! أعدها إلى الإطار'; } });
-            if (r.samples.length < 25) info.textContent = 'عيّنات قليلة جداً — تأكد أن يدك ظاهرة بالكامل وثابتة، ثم أعد.';
-            else if (r.size < 0.09 * 0.5) info.textContent = 'اليد بعيدة جداً؛ قرّبها للكاميرا وأعد.';
-            else { samples = samples.concat(r.samples); info.textContent = `ممتاز! ${r.samples.length} عيّنة.`; }
+            info.textContent = twoHands ? 'أظهر اليدين معاً وحرّكهما قليلاً' : 'ثبّت يدك وحرّكها قليلاً: أقرب، أبعد، ميل بسيط';
+            const target = twoHands ? 45 : 75;
+            const r = await captureStatic(app, {
+              seconds: 5.5, target, hands: twoHands ? 2 : 1,
+              shouldStop: () => cancelled,
+              onProgress: (n, t, st) => { setProg(n / t); if (st.lost) info.textContent = st.hands === 1 ? 'أظهر اليد الثانية أيضاً!' : 'اليد غير ظاهرة! أعدها إلى الإطار'; },
+            });
+            const got = twoHands ? r.samples2.length : r.samples.length;
+            const need = twoHands ? 20 : 25;
+            if (got < need) info.textContent = 'عيّنات قليلة جداً — تأكد من ظهور اليدين/اليد بالكامل وثباتهما، ثم أعد.';
+            else if (r.size < 0.045) info.textContent = 'اليد بعيدة جداً؛ قرّبها للكاميرا وأعد.';
+            else if (twoHands) { samples2 = samples2.concat(r.samples2); info.textContent = `ممتاز! ${r.samples2.length} عيّنة بيدين.`; }
+            else { samples = samples.concat(r.samples); locs = locs.concat(r.locs || []); info.textContent = `ممتاز! ${r.samples.length} عيّنة${(r.locs || []).length ? ' · قُيس موقع اليد' : ''}.`; }
           } catch (e) { if (!(e instanceof Cancel)) console.error(e); }
           busy = false; setCount(0); refreshActions();
         }
@@ -210,9 +240,17 @@ export function createDictView(app) {
             else if (dup) { toast('توجد إشارة بنفس الكلمة بنوع مختلف؛ تم الحفظ كإشارة منفصلة', ''); }
           }
           if (kind === 'static') {
-            let all = (sign.samples || []).concat(samples);
-            if (all.length > 260) { const step = all.length / 260; all = Array.from({ length: 260 }, (_, i) => all[Math.floor(i * step)]); }
-            sign.samples = all; delete sign.ref;
+            if (twoHands) {
+              let all = (sign.samples2 || []).concat(samples2);
+              if (all.length > 260) { const step = all.length / 260; all = Array.from({ length: 260 }, (_, i) => all[Math.floor(i * step)]); }
+              sign.samples2 = all; sign.hands = 2; sign.samples = []; delete sign.ref; delete sign.loc;
+            } else {
+              let all = (sign.samples || []).concat(samples);
+              if (all.length > 260) { const step = all.length / 260; all = Array.from({ length: 260 }, (_, i) => all[Math.floor(i * step)]); }
+              sign.samples = all; sign.hands = 1; delete sign.ref;
+              const loc = locFrom(locs);
+              if (loc) sign.loc = loc;
+            }
           } else { sign.takes = (sign.takes || []).concat(takes).slice(-10); if (anim && !sign.anim) sign.anim = anim; }
           const off = app.on('train', (p) => { if (app._tm) app._tm.style.width = Math.round(p * 100) + '%'; });
           await app.saveSign(sign, { retrain: !letter });

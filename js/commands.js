@@ -61,7 +61,11 @@ export function gestureLabel(app, key) {
 export function gestureOptions(app) {
   const out = [];
   for (const [id, name] of Object.entries(BUILTIN_NAMES)) out.push({ key: 'builtin:' + id, label: name + (id.startsWith('shape_') ? ' (وضعية)' : ' (حركة)') });
-  for (const s of app.signs) if (s.kind === 'static' || s.kind === 'motion') out.push({ key: 'sign:' + s.id, label: `${s.word} — من قاموسي` });
+  for (const s of app.signs) {
+    if (s.kind !== 'static' && s.kind !== 'motion') continue;
+    if (s.hands === 2) continue;   // إشارات اليدين تُعرَف في المتصفح فقط حالياً
+    out.push({ key: 'sign:' + s.id, label: `${s.word} — من قاموسي` });
+  }
   return out;
 }
 

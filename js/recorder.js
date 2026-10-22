@@ -13,8 +13,8 @@ export class Cancel extends Error {}
  * @param {object} o {seconds, target, onProgress(n,target,state), shouldStop()}
  */
 export async function captureStatic(app, o = {}) {
-  const seconds = o.seconds ?? 5, target = o.target ?? 70;
-  const samples = [];
+  const seconds = o.seconds ?? 5, target = o.target ?? 70, two = o.hands === 2;
+  const samples = [], samples2 = [], locs = [];
   let last = -1, lostSince = null, sizes = [];
   const t0 = performance.now();
   return new Promise((resolve, reject) => {
@@ -22,20 +22,34 @@ export async function captureStatic(app, o = {}) {
       const now = performance.now();
       if (o.shouldStop?.()) { off(); reject(new Cancel()); return; }
       const el = (now - t0) / 1000;
-      if (out.hand && out.frame) {
+      const frames = out.frames || (out.frame ? [out.frame] : []);
+      const ready = two ? frames.length >= 2 : frames.length >= 1;
+      if (ready) {
         lostSince = null;
-        if (out.frame.speed < 1.2 && (last < 0 || now - last > 65)) {
+        const f1 = frames[0], f2 = frames[1];
+        const slow = two ? f1.speed < 1.5 && f2.speed < 1.5 : f1.speed < 1.2;
+        if (slow && (last < 0 || now - last > 65)) {
           last = now;
-          const f = out.frame;
-          samples.push([...Array.from(f.p, r4), r4(f.w[0]), r4(f.w[1])]);
-          sizes.push(f.size);
+          if (two) {
+            samples2.push([
+              ...Array.from(f1.p, r4), ...Array.from(f2.p, r4),
+              r4(f1.wi[0]), r4(f1.wi[1]), r4(f2.wi[0]), r4(f2.wi[1]),
+              r4(f1.size), r4(f2.size),
+            ]);
+            sizes.push((f1.size + f2.size) / 2);
+          } else {
+            samples.push([...Array.from(f1.p, r4), r4(f1.w[0]), r4(f1.w[1])]);
+            sizes.push(f1.size);
+          }
+          if (f1.loc) locs.push({ x: r4(f1.loc.x), y: r4(f1.loc.y) });
         }
       } else if (lostSince == null) lostSince = now;
-      o.onProgress?.(samples.length, target, { hand: out.hand, elapsed: el, lost: lostSince != null && now - lostSince > 700 });
-      if (el >= seconds || samples.length >= target) {
+      const n = two ? samples2.length : samples.length;
+      o.onProgress?.(n, target, { hand: ready, hands: frames.length, elapsed: el, lost: lostSince != null && now - lostSince > 700 });
+      if (el >= seconds || n >= target) {
         off();
         const size = sizes.length ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 0;
-        resolve({ samples, size });
+        resolve({ samples, samples2, locs, size });
       }
     });
   });

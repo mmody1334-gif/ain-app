@@ -2,21 +2,34 @@
 // ويُخرج أحداثاً: إشارة ثابتة (تثبيت اليد)، إشارة متحركة (DTW)، تمريرات وتلويح وأشكال جاهزة.
 
 import { SignClassifier } from './classifier.js';
+import { PairModel } from './pairmodel.js';
 import { HandTracker, MotionSegmenter, MotionBank, segmentToSeq, detectBuiltinMotion, detectBuiltinShape, fingerStates } from './motion.js';
-import { POSE_LEN, FEATURE_LEN, mirrorPose } from './features.js';
+import { POSE_LEN, FEATURE_LEN, FEATURE_LEN2, pairToFeatures, mirrorPose, bodyAnchor, wristLocation } from './features.js';
 
 /** نموذج الإشارة المخزَّنة:
- *  { id, word, aliases?, kind:'static'|'motion'|'builtin', rule?, samples?, takes?, ref?, anim?, source, created }
+ *  { id, word, aliases?, kind:'static'|'motion'|'builtin', rule?, samples?, samples2?, hands?, takes?, ref?, anim?, source, created }
  *  - static : عيّنات [63 نقطة + موضع المعصم x,y] تُدرَّب في المتصفح
+ *  - static hands:2 : عيّنات samples2 = [pose1(63), pose2(63), wi1x,wi1y,wi2x,wi2y, size1,size2]
  *  - motion : لقطات DTW (takes) + رسم متحرك للأفاتار (anim)
  *  - builtin: ربط كلمة بشكل/حركة جاهزة (rule = shape_fist | swipe_left | wave ...) بلا تدريب
  */
 
+/** تطبيع مدخلات الكاشف: مصفوفة 21 نقطة قديمة، أو [{lm, hand}] ليدين. */
+export function normalizeHands(input) {
+  if (!input) return [];
+  if (Array.isArray(input) && input.length === 21 && input[0] && typeof input[0].x === 'number') return [{ lm: input, hand: null }];
+  if (Array.isArray(input) && input.length && input[0] && Array.isArray(input[0].lm)) return input.slice(0, 2);
+  if (Array.isArray(input) && input.length && Array.isArray(input[0])) return input.slice(0, 2).map((lm) => ({ lm, hand: null }));
+  return [];
+}
+
 export class Engine {
   constructor(opt = {}) {
     this.tracker = new HandTracker();
+    this.tracker2 = new HandTracker();
     this.segmenter = new MotionSegmenter();
     this.clf = null;
+    this.clf2 = null;
     this.bank = new MotionBank();
     this.signs = [];
     this.byRule = new Map();       // rule → sign
@@ -52,49 +65,72 @@ export class Engine {
   async setSigns(signs, onProgress, cached = null) {
     this.refreshMaps(signs);
 
-    const statics = this.signs.filter((s) => s.kind === 'static' && s.samples && s.samples.length >= 8);
-    const data = statics.map((s) => {
+    const statics1 = this.signs.filter((s) => s.kind === 'static' && (s.hands || 1) !== 2 && s.samples && s.samples.length >= 8);
+    const data1 = statics1.map((s) => {
       const samples = s.samples.map((a) => ({ p: Float32Array.from(a.slice(0, POSE_LEN)), w: [a[POSE_LEN] ?? 0.5, a[POSE_LEN + 1] ?? 0.5] }));
       // إشارات المشروع الأصلية مسجّلة بيد واحدة؛ نضيف نسخها المعكوسة حتى تعمل
       // باليد اليمنى أو اليسرى. إشارات المستخدم تبقى كما سجّلها هو.
       if (s.source === 'starter') samples.push(...samples.map((x) => ({ p: mirrorPose(x.p), w: x.w })));
       return { label: s.id, samples };
     });
-    this.clf = null; this.trainData = data;
+    const statics2 = this.signs.filter((s) => s.kind === 'static' && s.hands === 2 && s.samples2 && s.samples2.length >= 8);
+    const data2 = statics2.map((s) => ({
+      label: s.id,
+      samples: s.samples2.map((a) => {
+        const p1 = Float32Array.from(a.slice(0, POSE_LEN));
+        const p2 = Float32Array.from(a.slice(POSE_LEN, POSE_LEN * 2));
+        const f1 = { p: p1, w: [0, 0], wi: [a[126] ?? 0.5, a[127] ?? 0.5], size: a[130] || 0.18 };
+        const f2 = { p: p2, w: [0, 0], wi: [a[128] ?? 0.5, a[129] ?? 0.5], size: a[131] || 0.18 };
+        return pairToFeatures(f1, f2);
+      }),
+    }));
+    this.clf = null; this.clf2 = null;
+    this.trainData = data1; this.trainData2 = data2;
     // «بوابة الأصابع»: أي إصبع كان مفروداً دائماً (أو مطوياً دائماً) في تسجيلاتك، فظهوره بالعكس يرفض الإشارة.
     // تحلّ الخلط بين إشارتين تختلفان في إصبع واحد، فالمصنِّف وحده قد يتساهل فيها.
     this.sig = new Map();
-    for (const g of data) {
+    for (const g of data1) {
       const cnt = Array.from({ length: 5 }, () => ({ E: 0, C: 0, H: 0 }));
       for (const sm of g.samples) fingerStates(sm.p).forEach((st, i) => cnt[i][st]++);
       const n = g.samples.length;
       this.sig.set(g.label, cnt.map((c) => (c.C / n <= 0.03 && c.E / n >= 0.8 ? 'E' : c.E / n <= 0.03 && c.C / n >= 0.8 ? 'C' : null)));
     }
-    if (data.length >= 1) {
-      // نموذج مخزَّن صالح لنفس الإشارات: نستعيده بدل إعادة التدريب (يفتح التطبيق فوراً)
-      let loaded = false;
-      const sameLabels = cached && Array.isArray(cached.classes) && cached.classes.length === data.length &&
-        cached.classes.every((c, i) => c === data[i].label);
-      if (cached && sameLabels && cached.D === FEATURE_LEN) {
+    let loaded1 = false, loaded2 = false;
+    if (data1.length >= 1) {
+      const c1 = cached?.one || (cached?.W1 ? cached : null);
+      const sameLabels = c1 && Array.isArray(c1.classes) && c1.classes.length === data1.length &&
+        c1.classes.every((c, i) => c === data1[i].label);
+      if (c1 && sameLabels && c1.D === FEATURE_LEN) {
         try {
-          this.clf = SignClassifier.fromJSON(cached);
-          this.clf.attachReference(data);
-          loaded = true;
+          this.clf = SignClassifier.fromJSON(c1);
+          this.clf.attachReference(data1);
+          loaded1 = true;
           onProgress?.(1);
         } catch (e) { this.clf = null; }
       }
-      if (!loaded) {
+      if (!loaded1) {
         // «none» غير مطلوبة: يُرفض أي شيء بعيد عن العيّنات بحدّ أقرب جار
-        const many = data.length > 12;
-        this.clf = await SignClassifier.train(data, {
-          epochs: many ? 32 : data.length > 6 ? 50 : 40,
+        const many = data1.length > 12;
+        this.clf = await SignClassifier.train(data1, {
+          epochs: many ? 32 : data1.length > 6 ? 50 : 40,
           hidden: many ? 64 : 48,
           perClass: many ? 90 : 110,
           onProgress,
         });
       }
-      this.trainInfo = loaded ? 'cache' : 'trained';
-    } else this.trainInfo = 'empty';
+    }
+    if (data2.length >= 1) {
+      const c2 = cached?.two;
+      const same2 = c2 && Array.isArray(c2.classes) && c2.classes.length === data2.length &&
+        c2.classes.every((c, i) => c === data2[i].label);
+      if (c2 && same2 && (c2.D === FEATURE_LEN2 || !c2.D)) {
+        try { this.clf2 = PairModel.fromJSON(c2); loaded2 = true; } catch (e) { this.clf2 = null; }
+      }
+      if (!this.clf2) this.clf2 = PairModel.train(data2);
+      onProgress?.(1);
+    }
+    this.trainInfo = loaded1 || loaded2 ? 'cache' : data1.length || data2.length ? 'trained' : 'empty';
+    this.modelParts = { one: loaded1, two: loaded2 };
     this.bank = new MotionBank();
     for (const s of this.signs) if (s.kind === 'motion' && s.takes && s.takes.length >= 2) this.bank.setSign(s.id, s.takes);
     this.ready = true;
@@ -103,7 +139,7 @@ export class Engine {
   }
 
   reset() {
-    this.tracker.reset(); this.segmenter.reset(); this._resetHold();
+    this.tracker.reset(); this.tracker2.reset(); this.segmenter.reset(); this._resetHold();
     this.lock = null; this.motionUntil = 0; this.staticUntil = 0; this.lockOther = null; this.lockLostSince = 0;
   }
 
@@ -114,13 +150,16 @@ export class Engine {
 
   /**
    * @param {number} t  زمن بالثواني
-   * @param {Array<{x,y,z}>|null} lm  21 نقطة أو null عند غياب اليد
+   * @param {Array<{x,y,z}>|Array<{lm:Array}>|null} hands  يد واحدة (صيغة قديمة) أو يدان
    * @param {number} aspect  عرض/ارتفاع الصورة
    */
-  process(t, lm, aspect) {
-    const out = { t, hand: false, frame: null, speed: 0, pred: null, shape: null, hold: null, events: [], moving: false };
-    const frame = this.tracker.update(t, lm, aspect);   // lm=null يُحصي غياب اليد ويعيد ضبط التتبّع
-    if (!frame) {
+  process(t, hands, aspect, pose = null) {
+    const out = { t, hand: false, frame: null, frames: [], hands: 0, speed: 0, pred: null, shape: null, hold: null, events: [], moving: false, body: null };
+    const list = normalizeHands(hands);
+    const frames = [];
+    if (list[0]) { const f = this.tracker.update(t, list[0].lm, aspect); if (f) frames.push(f); }
+    if (list[1]) { const f = this.tracker2.update(t, list[1].lm, aspect); if (f) frames.push(f); }
+    if (!frames.length) {
       if (this.hold.key) this._resetHold();
       if (t - this.lastSeen > this.relockSec) this.lock = null;
       const seg = this.segmenter.push(null, t);
@@ -128,34 +167,73 @@ export class Engine {
       return out;
     }
     this.lastSeen = t;
-    out.hand = true; out.frame = frame; out.speed = frame.speed;
+    const anchor = pose ? bodyAnchor(pose, aspect) : null;
+    out.body = anchor;
+    if (anchor) for (const f of frames) f.loc = wristLocation(f.wi, anchor);
+    const frame = frames[0];
+    out.hand = true; out.frame = frame; out.frames = frames; out.hands = frames.length; out.speed = frame.speed;
 
-    // ----- حركة -----
+    // ----- حركة (تُقاس على اليد الأساسية) -----
     const seg = this.enableMotion ? this.segmenter.push(frame, t) : null;
     out.moving = this.segmenter.isActive;
     if (seg) this._onSegment(seg, out);
 
     // ----- ثبات -----
-    if (!out.moving && frame.speed < this.staticSpeedMax && t >= (this.motionUntil || 0) && t >= (this.staticUntil || 0)) this._static(t, frame, out);
+    if (!out.moving && frame.speed < this.staticSpeedMax && t >= (this.motionUntil || 0) && t >= (this.staticUntil || 0)) this._static(t, frames, out);
     else if (this.hold.key) { this._resetHold(); }
     out.hold = this.hold.key ? { key: this.hold.key, progress: Math.min(1, (t - this.hold.since) / this.holdSec), sign: this.hold.sign, id: this.hold.id } : null;
     return out;
   }
 
-  _static(t, frame, out) {
-    let cand = null;
+  _static(t, frames, out) {
+    let cand = null, locBlocked = false;
     if (this.enableStatic && this.clf) {
-      const pr = this.clf.predict(frame.p, frame.w);
-      out.pred = pr; this.lastPred = pr;
-      if (pr.accepted && pr.label && pr.label !== 'none' && this._fingerGate(pr.label, frame.p, frame.ext, frame.tdist)) {
-        const s = this.byId.get(pr.label);
-        if (s) cand = { key: 'sign:' + s.id, kind: 'static', id: s.id, sign: s, conf: pr.prob };
+      // نجرب اليدين معاً لإشارات اليد الواحدة، ونأخذ أوثق نتيجة
+      for (const f of frames) {
+        const pr = this.clf.predict(f.p, f.w);
+        out.pred = pr; this.lastPred = pr;
+        let frameCand = null;
+        if (pr.accepted && pr.label && pr.label !== 'none' && this._fingerGate(pr.label, f.p, f.ext, f.tdist)) {
+          const s = this.byId.get(pr.label);
+          if (s) {
+            // إشارات حسّاسة للموقع: نرفضها إذا كانت اليد بعيدة عن موضعها المسجّل بالنسبة للجسم
+            if (!s.loc || !f.loc || Math.hypot(f.loc.x - s.loc.x, f.loc.y - s.loc.y) <= s.loc.r) {
+              frameCand = { key: 'sign:' + s.id, kind: 'static', id: s.id, sign: s, conf: pr.prob };
+            } else locBlocked = true;
+          }
+        }
+        // قد تكون الإشارة الصحيحة في طبقة أخرى بنفس شكل اليد لكن بموقع جسم مختلف،
+        // أو يرفض المصنّف التعادل بين إشارتين متطابقتين في الشكل ومختلفتين في الموقع.
+        if (!frameCand && f.loc && pr.probs && pr.probs.length && pr.dist <= this.clf.nnThr) {
+          for (let c = 0; c < pr.probs.length; c++) {
+            const alt = this.byId.get(this.clf.classes[c]);
+            if (!alt || !alt.loc || pr.probs[c] < 0.22) continue;
+            if (Math.hypot(f.loc.x - alt.loc.x, f.loc.y - alt.loc.y) > alt.loc.r) continue;
+            if (!this._fingerGate(alt.id, f.p, f.ext, f.tdist)) continue;
+            const cc = { key: 'sign:' + alt.id, kind: 'static', id: alt.id, sign: alt, conf: pr.probs[c] };
+            if (!frameCand || cc.conf > frameCand.conf) frameCand = cc;
+          }
+        }
+        if (frameCand && (!cand || frameCand.conf > cand.conf)) cand = frameCand;
       }
     }
-    if (!cand && this.enableShapes) {
-      const sh = detectBuiltinShape(frame.p, frame.ext, frame.tdist);
-      out.shape = sh;
-      if (sh) cand = { key: 'builtin:' + sh.id, kind: 'shape', id: sh.id, sign: this.byRule.get(sh.id) || null, conf: sh.conf ?? 1 };
+    // إشارات اليدين: نجرّب الترتيبين حتى لا يهم ترتيب الكاشف
+    if (this.enableStatic && this.clf2 && frames.length >= 2) {
+      for (const pair of [[frames[0], frames[1]], [frames[1], frames[0]]]) {
+        const pr = this.clf2.predict(pairToFeatures(pair[0], pair[1]));
+        out.pred2 = pr;
+        if (pr.accepted && pr.label) {
+          const s = this.byId.get(pr.label);
+          if (s) { cand = { key: 'sign:' + s.id, kind: 'static', id: s.id, sign: s, conf: pr.prob }; break; }
+        }
+      }
+    }
+    if (!cand && this.enableShapes && !locBlocked && frames.length < 2) {
+      for (const f of frames) {
+        const sh = detectBuiltinShape(f.p, f.ext, f.tdist);
+        out.shape = sh;
+        if (sh) { cand = { key: 'builtin:' + sh.id, kind: 'shape', id: sh.id, sign: this.byRule.get(sh.id) || null, conf: sh.conf ?? 1 }; break; }
+      }
     }
     const h = this.hold;
     if (cand) {

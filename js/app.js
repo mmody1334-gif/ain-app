@@ -49,15 +49,18 @@ function modelKey(groups) {
   };
   add('v' + MODEL_VERSION + '|' + FEATURE_LEN);
   const sorted = groups.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  let total = 0;
   for (const g of sorted) {
-    add(g.id + ':' + (g.source || '') + ':' + g.samples.length);
-    for (const a of g.samples) {
+    const list = g.hands === 2 ? (g.samples2 || []) : (g.samples || []);
+    total += list.length;
+    add(g.id + ':' + (g.source || '') + ':' + (g.hands || 1) + ':' + list.length);
+    for (const a of list) {
       add('n' + a.length);
       for (let i = 0; i < a.length; i += 5) add(String(Math.round(a[i] * 1000)));
       add(String(Math.round(a[a.length - 1] * 1000)));
     }
   }
-  return (h >>> 0).toString(36) + '-' + sorted.reduce((n, g) => n + g.samples.length, 0);
+  return (h >>> 0).toString(36) + '-' + total;
 }
 
 class App {
@@ -150,7 +153,7 @@ class App {
   }
 
   ensureRef(s) {
-    if (s.kind === 'static' && !s.ref && s.samples?.length) s.ref = medoidPose(s.samples);
+    if (s.kind === 'static' && s.hands !== 2 && !s.ref && s.samples?.length) s.ref = medoidPose(s.samples);
     return s;
   }
 
@@ -179,17 +182,28 @@ class App {
     this.training = true; this.trainPct = 0; this.setStatus();
     this.index = buildIndex(this.signs);
     this.engine.holdSec = this.settings.holdSec;
-    const staticData = this.signs.filter((s) => s.kind === 'static' && s.samples && s.samples.length >= 8);
+    const staticData = this.signs.filter((s) => s.kind === 'static' &&
+      ((s.hands === 2 && s.samples2 && s.samples2.length >= 8) || ((s.hands || 1) !== 2 && s.samples && s.samples.length >= 8)));
     const key = modelKey(staticData);
     let cached = null;
     try {
       const meta = await this.store.getMeta('model', null);
-      if (meta && meta.key === key && meta.model) cached = meta.model;
+      if (meta && meta.key === key && (meta.one || meta.two || meta.model)) cached = meta.one || meta.two ? { one: meta.one || null, two: meta.two || null } : meta.model;
     } catch (e) { /* لا شيء */ }
     try {
       const clf = await this.engine.setSigns(this.signs, (p) => { this.trainPct = p; this.setStatus(); this.emit('train', p); }, cached);
-      if (clf && staticData.length && !cached) {
-        try { await this.store.setMeta('model', { key, model: clf.toJSON(), at: Date.now() }); } catch (e) { /* لا شيء */ }
+      const parts = this.engine.modelParts || {};
+      const needOne = !!this.engine.clf && !parts.one;
+      const needTwo = !!this.engine.clf2 && !parts.two;
+      if (staticData.length && (!cached || needOne || needTwo)) {
+        try {
+          await this.store.setMeta('model', {
+            key,
+            one: clf ? clf.toJSON() : null,
+            two: this.engine.clf2 ? this.engine.clf2.toJSON() : null,
+            at: Date.now(),
+          });
+        } catch (e) { /* لا شيء */ }
       }
       this.modelCached = this.engine.trainInfo === 'cache';
     } catch (e) { console.error(e); toast('تعذّر تدريب النموذج', 'bad'); }
@@ -378,7 +392,7 @@ class App {
         if (was) await this.startCamera(); else this.updateStage();
       } }, v === 'cpu' ? 'المعالج (أثبت)' : 'كرت الشاشة (أسرع)')));
       const dg = this.cam.diag || {};
-      const diagText = `engine=${dg.backend || '-'} video=${dg.video || '-'} frames=${dg.frames || 0} hands=${dg.hands || 0} errors=${dg.errors || 0} rvfc=${dg.rvfc ? 1 : 0}${dg.lastError ? ' last=' + dg.lastError : ''}`;
+      const diagText = `engine=${dg.backend || '-'} video=${dg.video || '-'} frames=${dg.frames || 0} hands=${dg.hands || 0} pose=${dg.pose || 0} errors=${dg.errors || 0} rvfc=${dg.rvfc ? 1 : 0}${dg.lastError ? ' last=' + dg.lastError : ''}`;
       const voiceInfo = tts.supported ? (tts.hasArabic ? 'صوت عربي فصيح متوفر على جهازك.' : 'لا يوجد صوت عربي مثبّت في جهازك؛ ثبّت صوتاً عربياً (فصحى) من إعدادات النظام.') : 'النطق غير مدعوم في هذا المتصفح.';
       const testBtn = btn('جرّب الصوت', { ic: 'speaker', cls: 'sm', onclick: () => this.say('مرحبًا، أنا عين') });
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },

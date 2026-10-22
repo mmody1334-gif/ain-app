@@ -156,6 +156,46 @@ export function poseToFeatures(p, w, out) {
   return f;
 }
 
+// ---------- إشارات اليدين ----------
+// 99 خصيصة لكل يد + 6 علاقات بين اليدين (المسافة والاتجاه وتقابل الكفين وحجمهما).
+export const FEATURE_LEN2 = FEATURE_LEN * 2 + 6;
+
+/** يحوّل إطارَي يد إلى متجه خصائص موحّد لإشارات اليدين. */
+export function pairToFeatures(a, b, out) {
+  const f = out || new Float32Array(FEATURE_LEN2);
+  f.set(poseToFeatures(a.p, a.w), 0);
+  f.set(poseToFeatures(b.p, b.w), FEATURE_LEN);
+  const s = (a.size + b.size) / 2 || 1;
+  const dx = (b.wi[0] - a.wi[0]) / s, dy = (b.wi[1] - a.wi[1]) / s;
+  const na = orientation(a.p), nb = orientation(b.p);
+  let o = FEATURE_LEN * 2;
+  f[o++] = dx;
+  f[o++] = dy;
+  f[o++] = Math.hypot(dx, dy);
+  f[o++] = na[6] * nb[6] + na[7] * nb[7] + na[8] * nb[8];
+  f[o++] = na[0] * nb[0] + na[1] * nb[1] + na[2] * nb[2];
+  f[o++] = b.size / (a.size || 1);
+  return f;
+}
+
+// ---------- موقع اليد بالنسبة للجسم ----------
+/** مركز الكتفين وعرضهما بوحدات عرض الصورة (x و y/aspect) من نقاط Pose. */
+export function bodyAnchor(pose, aspect) {
+  if (!pose || pose.length < 13 || !pose[11] || !pose[12]) return null;
+  const ar = aspect > 0 ? aspect : 4 / 3;
+  const L = pose[11], R = pose[12];
+  const x = (L.x + R.x) / 2, y = (L.y / ar + R.y / ar) / 2;
+  const w = Math.hypot(L.x - R.x, (L.y - R.y) / ar);
+  if (!(w > 0.02)) return null;
+  return { x, y, w };
+}
+
+/** موضع المعصم بالنسبة لمركز الكتفين، مقسوماً على عرض الكتفين. */
+export function wristLocation(wi, anchor) {
+  if (!anchor) return null;
+  return { x: (wi[0] - anchor.x) / anchor.w, y: (wi[1] - anchor.y) / anchor.w };
+}
+
 // ---------- تغييرات عشوائية للتدريب (تحاكي اختلاف الجلسات والزوايا) ----------
 function gauss(rng) {
   let u = 0, v = 0;

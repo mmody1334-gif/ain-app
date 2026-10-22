@@ -55,7 +55,7 @@ export function createListenView(app) {
   async function playOne(sign, label) {
     capEl.textContent = label;
     const anim = animOf(sign);
-    desc.textContent = sign.kind === 'motion' ? describeMotion(sign) : (sign.ref ? describePose(Float32Array.from(sign.ref)) : '');
+    desc.textContent = sign.kind === 'motion' ? describeMotion(sign) : (sign.hands === 2 ? 'إشارة بيدين' : sign.ref ? describePose(Float32Array.from(sign.ref)) : '');
     if (anim) {
       if (anim.frames.length > 1) view.play(anim, { speed });
       else view.setPose(anim.frames[0].p, anim.frames[0].off);

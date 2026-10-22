@@ -7,6 +7,7 @@ import { HAND_CONNECTIONS } from './features.js';
 const CDN_VER = '0.10.14';
 const CDN_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CDN_VER}`;
 const MODEL_CDN = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
+const POSE_MODEL_CDN = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 async function exists(url) {
   try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; }
@@ -14,7 +15,7 @@ async function exists(url) {
 
 export async function loadDetector(onStatus = () => {}, pref = 'cpu') {
   const mock = typeof window !== 'undefined' && window.__SB_MOCK__;
-  if (mock) return { mock: true, backend: 'mock', detect: (video, t) => mock.detect(t) };
+  if (mock) return { mock: true, backend: 'mock', detect: (video, t) => mock.detect(t), detectPose: () => (mock.detectPose ? mock.detectPose() : null) };
   let mod, wasmBase, modelUrl;
   const localOk = await exists('vendor/tasks-vision/vision_bundle.mjs');
   if (localOk) {
@@ -27,11 +28,12 @@ export async function loadDetector(onStatus = () => {}, pref = 'cpu') {
     wasmBase = `${CDN_BASE}/wasm`;
   }
   modelUrl = (await exists('vendor/hand_landmarker.task')) ? new URL('vendor/hand_landmarker.task', document.baseURI).href : MODEL_CDN;
-  const { FilesetResolver, HandLandmarker } = mod;
+  const poseUrl = (await exists('vendor/pose_landmarker_lite.task')) ? new URL('vendor/pose_landmarker_lite.task', document.baseURI).href : POSE_MODEL_CDN;
+  const { FilesetResolver, HandLandmarker, PoseLandmarker } = mod;
   const fileset = await FilesetResolver.forVisionTasks(wasmBase);
   const make = (delegate) => HandLandmarker.createFromOptions(fileset, {
     baseOptions: { modelAssetPath: modelUrl, delegate },
-    runningMode: 'VIDEO', numHands: 1,
+    runningMode: 'VIDEO', numHands: 2,
     minHandDetectionConfidence: 0.5, minHandPresenceConfidence: 0.5, minTrackingConfidence: 0.5,
   });
   let hl = null, backend = '', lastErr = null;
@@ -40,14 +42,36 @@ export async function loadDetector(onStatus = () => {}, pref = 'cpu') {
     try { hl = await make(d); backend = d; break; } catch (e) { lastErr = e; }
   }
   if (!hl) throw lastErr || new Error('detector-init-failed');
-  let lastTs = 0;
+  // نموذج وضعية الجسم (كتفان/أنف) لمعرفة موقع اليد بالنسبة للجسم. فشله لا يعطّل التطبيق.
+  let pl = null;
+  try {
+    pl = await PoseLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: poseUrl, delegate: 'CPU' },
+      runningMode: 'VIDEO', numPoses: 1,
+      minPoseDetectionConfidence: 0.5, minPosePresenceConfidence: 0.5, minTrackingConfidence: 0.5,
+    });
+  } catch (e) { pl = null; }
+  let lastTs = 0, lastPoseTs = 0;
   return {
     mock: false,
     get backend() { return backend; },
+    get hasPose() { return !!pl; },
     detect(video, t) {
       const ts = Math.max(lastTs + 1, Math.round(t * 1000));
       lastTs = ts;
       const r = hl.detectForVideo(video, ts);
+      if (!r || !r.landmarks || !r.landmarks.length) return null;
+      return r.landmarks.map((lm, i) => ({
+        lm,
+        hand: r.handednesses?.[i]?.[0]?.categoryName || null,
+        score: r.handednesses?.[i]?.[0]?.score || 0,
+      }));
+    },
+    detectPose(video, t) {
+      if (!pl) return null;
+      const ts = Math.max(lastPoseTs + 1, Math.round(t * 1000));
+      lastPoseTs = ts;
+      const r = pl.detectForVideo(video, ts);
       return r && r.landmarks && r.landmarks[0] ? r.landmarks[0] : null;
     },
     async fallbackToCpu() {
@@ -73,14 +97,14 @@ export class CameraHub {
     this.error = null;
     this.t0 = performance.now();
     this.aspect = 4 / 3;
-    this.lastLm = null; this.lastOut = null;
+    this.lastLm = null; this.lastOut = null; this.lastPose = null;
     this._mockT = 0;
     this.pref = 'cpu';
     this._gen = 0; this._frameReady = true; this._lastDetect = 0; this._switching = false;
     this.light = null; this._lightT = 0;
     this._lc = document.createElement('canvas'); this._lc.width = 32; this._lc.height = 32;
     this._lctx = this._lc.getContext('2d', { willReadFrequently: true });
-    this.diag = { backend: '', frames: 0, hands: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
+    this.diag = { backend: '', frames: 0, hands: 0, pose: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
   }
 
   onFrame(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -92,7 +116,8 @@ export class CameraHub {
     this.facing = facing; this.status = 'loading'; this.error = null;
     try {
       if (!this.detector) this.detector = await loadDetector(onStatus, this.pref);
-      this.diag = { backend: this.detector.backend, frames: 0, hands: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
+      this.diag = { backend: this.detector.backend, frames: 0, hands: 0, pose: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
+      this.lastPose = null;
       if (!this.detector.mock) {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('no-camera-api');
         onStatus('تشغيل الكاميرا…');
@@ -120,6 +145,7 @@ export class CameraHub {
 
   stop() {
     this.running = false; this.status = 'idle'; this._gen++;
+    this.lastPose = null;
     if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); this.stream = null; }
     try { this.video.srcObject = null; } catch (e) { /* لا شيء */ }
     this.clearOverlay();
@@ -157,19 +183,24 @@ export class CameraHub {
       if (!this.running || gen !== this._gen) return;
       const now = performance.now();
       const t = (now - this.t0) / 1000;
-      let lm = null;
+      let hands = null;
       if (this.detector.mock) {
-        try { lm = this.detector.detect(null, t); } catch (e) { lm = null; }
+        try { hands = this.detector.detect(null, t); } catch (e) { hands = null; }
       } else {
         const fresh = this.video.readyState >= 2 && !this._switching &&
           (hasRvfc ? (this._frameReady || now - this._lastDetect > 250) : now - this._lastDetect >= 30);
         if (!fresh) { requestAnimationFrame(step); return; }
         this._frameReady = false; this._lastDetect = now;
-        try { lm = this.detector.detect(this.video, t); } catch (e) { lm = null; this._onDetectError(e); }
-        this.diag.frames++; if (lm) this.diag.hands++;
+        try { hands = this.detector.detect(this.video, t); } catch (e) { hands = null; this._onDetectError(e); }
+        this.diag.frames++;
+        if (hands) this.diag.hands += hands[0]?.lm ? hands.length : 1;
       }
-      this.lastLm = lm;
-      const out = this.engine.process(t, lm, this.aspect);
+      this.lastLm = hands;
+      let pose = this.lastPose;
+      if (this.detector.detectPose && (this.detector.mock || this.diag.frames % 4 === 0)) {
+        try { const p = this.detector.detectPose(this.video, t); if (p) { pose = p; this.lastPose = p; this.diag.pose++; } } catch (e) { /* لا شيء */ }
+      }
+      const out = this.engine.process(t, hands, this.aspect, pose);
       this.lastOut = out;
       this._frames++;
       if (now - this._fpsT > 1000) { this.fps = this._frames * 1000 / (now - this._fpsT); this._frames = 0; this._fpsT = now; }
@@ -185,20 +216,22 @@ export class CameraHub {
           this.diag.light = Math.round(this.light);
         } catch (e) { /* لا شيء */ }
       }
-      this._draw(lm, out);
-      for (const fn of this.listeners) { try { fn(out, lm, t); } catch (e) { console.error(e); } }
+      this._draw(hands, out);
+      const primary = hands?.[0]?.lm || (Array.isArray(hands) && hands.length === 21 ? hands : null);
+      for (const fn of this.listeners) { try { fn(out, primary, t); } catch (e) { console.error(e); } }
       requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }
 
-  _draw(lm, out) {
+  _draw(hands, out) {
     const cv = this.overlay, ctx = this.octx;
     const w = cv.clientWidth, h = cv.clientHeight;
     if (cv.width !== w * 2 || cv.height !== h * 2) { cv.width = w * 2; cv.height = h * 2; }
     ctx.setTransform(2, 0, 0, 2, 0, 0);
     ctx.clearRect(0, 0, w, h);
-    if (!lm || !this.showSkeleton) return;
+    const list = hands?.[0]?.lm ? hands : (Array.isArray(hands) && hands.length === 21 ? [{ lm: hands }] : []);
+    if (!list.length || !this.showSkeleton) return;
     // الفيديو يُعرض بنمط cover: نحسب نفس التحويل
     const va = this.aspect, ca = w / h;
     let sx = w, sy = h, ox = 0, oy = 0;
@@ -206,11 +239,14 @@ export class CameraHub {
     const X = (p) => ox + p.x * sx, Y = (p) => oy + p.y * sy;
     const ok = out && out.hold ? Math.min(1, out.hold.progress) : 0;
     ctx.lineWidth = 3; ctx.lineCap = 'round';
-    ctx.strokeStyle = ok > 0 ? `rgba(60,203,142,${0.55 + 0.4 * ok})` : 'rgba(255,255,255,0.8)';
-    ctx.beginPath();
-    for (const [a, b] of HAND_CONNECTIONS) { ctx.moveTo(X(lm[a]), Y(lm[a])); ctx.lineTo(X(lm[b]), Y(lm[b])); }
-    ctx.stroke();
-    ctx.fillStyle = ok > 0 ? '#3ccb8e' : '#8f8cff';
-    for (const p of lm) { ctx.beginPath(); ctx.arc(X(p), Y(p), 3.2, 0, 7); ctx.fill(); }
+    list.forEach((h, idx) => {
+      const lm = h.lm;
+      ctx.strokeStyle = ok > 0 ? `rgba(60,203,142,${0.55 + 0.4 * ok})` : idx ? 'rgba(140,150,255,0.75)' : 'rgba(255,255,255,0.8)';
+      ctx.beginPath();
+      for (const [a, b] of HAND_CONNECTIONS) { ctx.moveTo(X(lm[a]), Y(lm[a])); ctx.lineTo(X(lm[b]), Y(lm[b])); }
+      ctx.stroke();
+      ctx.fillStyle = ok > 0 ? '#3ccb8e' : idx ? '#8f8cff' : '#ffffff';
+      for (const p of lm) { ctx.beginPath(); ctx.arc(X(p), Y(p), 3.2, 0, 7); ctx.fill(); }
+    });
   }
 }
