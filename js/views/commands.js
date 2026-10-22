@@ -132,6 +132,7 @@ export function createCommandsView(app) {
   // ---------- التحكم بالحاسوب ----------
   function renderArm() {
     if (!armEl) return;
+    if (cfg.pc.alwaysArm) { armEl.className = 'chip-status ok'; armEl.textContent = 'مفعّل دائماً ✔'; return; }
     const t = (performance.now() - app.cam.t0) / 1000;
     const on = arm.isArmed(t);
     armEl.className = 'chip-status ' + (on ? 'ok' : '');
@@ -155,6 +156,7 @@ export function createCommandsView(app) {
     const opts = gestureOptions(app);
     const sel = (value, onchange, optList) => { const s = h('select', optList.map((o) => h('option', { value: o.key ?? o.id, selected: (o.key ?? o.id) === value }, o.label))); s.onchange = () => onchange(s.value); return s; };
     const secs = h('input', { type: 'text', inputMode: 'numeric', value: String(pc.armSeconds), onchange: (e) => { pc.armSeconds = Math.max(5, Math.min(300, +e.target.value || 25)); e.target.value = pc.armSeconds; save(); } });
+    const always = h('input', { type: 'checkbox', checked: !!pc.alwaysArm, onchange: (e) => { pc.alwaysArm = e.target.checked; save(); arm.setConfig(pc); renderArm(); } });
     const rows = h('div.list');
     pc.bindings.forEach((b, i) => rows.append(h('div.item', { style: { flexDirection: 'column', alignItems: 'stretch', gap: '6px' } },
       sel(b.key, (v) => { b.key = v; save(); }, opts), h('div.row', h('div.grow', sel(b.action, (v) => { b.action = v; save(); }, ACTIONS)), h('button.iconbtn', { 'aria-label': 'حذف', onclick: () => { pc.bindings.splice(i, 1); save(); renderPc(); } }, icon('trash'))))));
@@ -171,8 +173,9 @@ export function createCommandsView(app) {
       arm.setConfig(pc); save(); renderPc(); toast('تم الضبط: يسار = التالي، يمين = السابق', 'ok');
     };
     pcBox.append(
-      h('p.small.muted', 'تشغّل برنامجاً صغيراً على الحاسوب (بكاميرته) فيضغط الأزرار عند إيماءاتك: تنقّل بين شرائح PowerPoint، تحكم بالفيديو والصوت، وغيرها. جرّب الإيماءات هنا أولاً.'),
-      h('label.field', h('span', 'إيماءة التسليح (تثبّتها لتفعيل التحكم، فلا تضغط الأزرار إلا بعدها)'), sel(pc.armKey, (v) => { pc.armKey = v; arm.setConfig(pc); save(); }, opts)),
+      h('p.small.muted', 'تشغّل برنامجاً صغيراً على الحاسوب (بكاميرته) فيضغط الأزرار عند إيماءاتك: تلويح اليد في الهواء لليسار = الشريحة التالية في PowerPoint، ولليمين = الشريحة السابقة، مع تحكم بالفيديو والصوت. جرّب الإيماءات هنا أولاً.'),
+      h('label.switch', h('span', 'التحكم مفعّل دائماً (بلا إيماءة تسليح — أخطر على الأخطاء العشوائية)'), always),
+      h('label.field', h('span', 'إيماءة التسليح (تثبّتها لتفعيل التحكم، فلا تضغط الأزرار إلا بعدها) — تُستعمل إن أطفيت الخيار أعلاه'), sel(pc.armKey, (v) => { pc.armKey = v; arm.setConfig(pc); save(); }, opts)),
       h('label.field', h('span', 'مدة بقاء التحكم مسلَّحاً بعد آخر أمر (ثوانٍ)'), secs),
       h('div.row.between', h('b', 'الأوامر'), armEl),
       h('div.row.between', { style: { gap: '8px' } },
@@ -188,7 +191,7 @@ export function createCommandsView(app) {
           h('li', 'نزّل ثلاثة ملفات وضعها في مجلد واحد: ', h('b', 'ain_pc_controller.py'), '، و', h('b', 'control_config.json'), ' من زر «صدّر إعداد الحاسوب»، و', h('b', 'hand_landmarker.task'), ' من الرابط أدناه.'),
           h('li', 'افتح Terminal أو CMD في المجلد، ونفّذ مرة واحدة: ', h('span.kbd', 'py -m pip install opencv-python mediapipe numpy')),
           h('li', 'شغّل: ', h('span.kbd', 'py ain_pc_controller.py'), ' واسمح للبرنامج باستخدام الكاميرا.'),
-          h('li', 'افتح PowerPoint، اعرض إيماءة التسليح (حرف V افتراضياً) ثانيتين، ثم حرّك يدك لليسار للشريحة التالية ولليمين للسابقة.'),
+          h('li', 'افتح PowerPoint، اعرض إيماءة التسليح (حرف V افتراضياً) ثانيتين — أو فعّل «التحكم مفعّل دائماً» في التطبيق — ثم حرّك يدك لليسار (تلويح) للشريحة التالية ولليمين للسابقة.'),
           h('li', 'اضغط ', h('span.kbd', 'Q'), ' لإيقاف البرنامج.')),
         h('p.small.muted', 'إذا لم تظهر الكاميرا فأغلق أي برنامج آخر يستخدمها. وإذا فشل تثبيت mediapipe فاستخدم Python 3.11.'),
         h('div.row',

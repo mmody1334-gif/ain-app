@@ -4,7 +4,7 @@ import { h, icon, btn, toast, sheet } from './ui.js';
 import { Store } from './store.js';
 import { Engine } from './engine.js';
 import { CameraHub } from './camera.js';
-import { tts, stt } from './speech.js';
+import { tts, stt, genderOf } from './speech.js';
 import { buildIndex } from './arabic.js';
 import { BUILTIN_NAMES } from './names.js';
 import { POSE_LEN, poseToFeatures, FEATURE_LEN } from './features.js';
@@ -19,7 +19,7 @@ import { createCommandsView } from './views/commands.js';
 import { createCourseView } from './views/course.js';
 
 const DEFAULT_SETTINGS = {
-  holdSec: 0.6, speakEach: true, rate: 0.92, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
+  holdSec: 0.6, speakEach: true, rate: 0.92, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
 };
 
 // إشارات جاهزة أُضيفت سابقاً للأرقام ثم أُزيلت: أشكالها تتعارض مع إشارات
@@ -257,7 +257,7 @@ class App {
   }
 
   // ---------- النطق ----------
-  say(text, opt = {}) { return tts.speak(text, { rate: this.settings.rate, lang: this.settings.ttsLang, voiceURI: this.settings.ttsVoice, ...opt }); }
+  say(text, opt = {}) { return tts.speak(text, { rate: this.settings.rate, lang: this.settings.ttsLang, voiceURI: this.settings.ttsVoice, gender: this.settings.ttsGender || 'auto', ...opt }); }
 
   // ---------- التنقّل ----------
   buildTabs() {
@@ -418,11 +418,48 @@ class App {
       hold.onchange = () => this.saveSettings({ holdSec: +hold.value });
       const rate = h('input', { type: 'range', min: 0.6, max: 1.3, step: 0.05, value: s.rate, style: { width: '100%' } });
       rate.onchange = () => this.saveSettings({ rate: +rate.value });
-      const av = tts.arabicVoices();
-      const voiceSel = h('select', { onchange: (e) => this.saveSettings({ ttsVoice: e.target.value }) },
-        h('option', { value: '' }, 'تلقائي — صوت عربي فصيح (موصى به)'),
-        av.length ? av.map((v) => h('option', { value: v.voiceURI, selected: v.voiceURI === s.ttsVoice }, `${v.name} — ${v.lang}`))
-          : h('option', { value: '', disabled: true }, 'لا توجد أصوات عربية مثبّتة في هذا المتصفح'));
+      // ---- الصوت واللغة: لغة النطق من أصوات الجهاز + نوع الصوت (ذكر/أنثى) + صوت محدد ----
+      const langSel = h('select');
+      const gSeg = h('div.seg');
+      const voiceSel = h('select');
+      const gLabels = { auto: 'تلقائي', male: 'صوت رجالي', female: 'صوت نسائي' };
+      const baseLang = () => String(s.ttsLang || 'ar').split('-')[0];
+      const rebuildLangs = () => {
+        langSel.innerHTML = '';
+        const langs = tts.languages();
+        if (!langs.length) {
+          langSel.append(h('option', { value: 'ar' }, 'للمتأخر: لا توجد أصوات مثبّتة في الجهاز بعد'));
+          return;
+        }
+        for (const L of langs) {
+          langSel.append(h('option', { value: L.code, selected: L.code === baseLang() }, L.label));
+        }
+      };
+      const rebuildGender = () => {
+        gSeg.innerHTML = '';
+        gSeg.append(...['auto', 'male', 'female'].map((v) => h('button', { type: 'button', 'aria-pressed': String((s.ttsGender || 'auto') === v), onclick: async (e) => {
+          gSeg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false'));
+          e.currentTarget.setAttribute('aria-pressed', 'true');
+          s.ttsGender = v;
+          await this.saveSettings({ ttsGender: v });
+          rebuildVoices();
+        } }, gLabels[v])));
+      };
+      const rebuildVoices = () => {
+        voiceSel.innerHTML = '';
+        const pool = tts.voicesFor(baseLang(), s.ttsGender || 'auto');
+        voiceSel.append(h('option', { value: '' }, pool.length ? 'تلقائي — اختار الأنسب (موصى به)' : `لا أصوات مثبّتة لهذه اللغة؛ ثبّت صوت «${tts.languages().find((L) => L.code === baseLang())?.label || baseLang()}» من إعدادات النظام`));
+        for (const v of pool) {
+          const g = { male: '(ذكر)', female: '(أنثى)', unknown: '' }[genderOf(v)];
+          voiceSel.append(h('option', { value: v.voiceURI, selected: v.voiceURI === s.ttsVoice }, `${v.name} ${g} — ${v.lang}`));
+        }
+      };
+      langSel.onchange = async (e) => {
+        await this.saveSettings({ ttsLang: e.target.value, ttsVoice: '' });
+        rebuildVoices();
+        this.say(baseLang() === 'ar' ? 'مرحبًا' : 'Hello');
+      };
+      voiceSel.onchange = (e) => this.say(baseLang() === 'ar' ? 'مرحبًا أنا عين، سأصدّ ما تقوله' : 'Hello, I am AIN', { voiceURI: e.target.value });
       const speakEach = h('input', { type: 'checkbox', checked: s.speakEach, onchange: (e) => this.saveSettings({ speakEach: e.target.checked }) });
       const skel = h('input', { type: 'checkbox', checked: s.skeleton, onchange: (e) => this.saveSettings({ skeleton: e.target.checked }) });
       const theme = h('div.seg', ['auto', 'light', 'dark'].map((v) => h('button', { type: 'button', 'aria-pressed': String(s.theme === v), onclick: (e) => { this.saveSettings({ theme: v }); theme.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } }, { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' }[v])));
@@ -437,10 +474,15 @@ class App {
       const diagText = `engine=${dg.backend || '-'} video=${dg.video || '-'} frames=${dg.frames || 0} hands=${dg.hands || 0} pose=${dg.pose || 0} errors=${dg.errors || 0} rvfc=${dg.rvfc ? 1 : 0}${dg.lastError ? ' last=' + dg.lastError : ''}`;
       const voiceInfo = tts.supported ? (tts.hasArabic ? 'صوت عربي فصيح متوفر على جهازك.' : 'لا يوجد صوت عربي مثبّت في جهازك؛ ثبّت صوتاً عربياً (فصحى) من إعدادات النظام.') : 'النطق غير مدعوم في هذا المتصفح.';
       const testBtn = btn('جرّب الصوت', { ic: 'speaker', cls: 'sm', onclick: () => this.say('مرحبًا، أنا عين') });
-      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },
+      rebuildLangs(); rebuildGender(); rebuildVoices();
+      // الأصوات قد تتأخر عن فتح الإعدادات (خاصة على الجوال)؛ نُعيد البناء عند بلوغها
+      tts.onVoicesChanged(() => { rebuildLangs(); rebuildVoices(); });      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },
         h('div.card', h('label.field', h('div.row.between', h('span', 'مدة تثبيت اليد لتأكيد الإشارة'), holdLbl), hold), h('p.small.muted', 'أطول = أدق وأقل أخطاء، أقصر = أسرع.')),
-        h('div.card', h('label.switch', h('span', 'انطق كل كلمة فور التعرّف عليها'), speakEach),
-          h('label.field', h('span', 'صوت النطق (العربية الفصحى)'), voiceSel),
+        h('div.card', h('h2', 'الصوت واللغات'),
+          h('label.switch', h('span', 'انطق كل كلمة فور التعرّف عليها'), speakEach),
+          h('label.field', h('span', 'لغة النطق (كل اللغات المثبّتة في جهازك)'), langSel),
+          h('label.field', h('span', 'نوع الصوت'), gSeg),
+          h('label.field', h('span', 'صوت النطق'), voiceSel),
           h('label.field', h('span', 'سرعة النطق'), rate), h('div.row', testBtn, h('span.small.muted', voiceInfo)),
           h('p.small.muted', 'يُضيف التطبيق التشكيل تلقائياً للكلمات الشائعة حتى ينطقها المحرّك بالفصحى، لا بلهجة محلية.')),
         h('div.card', h('label.switch', h('span', 'ارسم نقاط اليد فوق الكاميرا'), skel), h('div.field', h('span.muted.small', 'الكاميرا المفضّلة'), cam), h('div.field', h('span.muted.small', 'المظهر'), theme)),
@@ -454,6 +496,7 @@ class App {
         h('div.card', h('h2', 'كشف اليد'), h('div.field', h('span.muted.small', 'محرّك الكشف'), det), h('p.small.muted', { dir: 'ltr', style: { textAlign: 'left', wordBreak: 'break-word' } }, diagText), h('p.small.muted', 'إن لم تظهر نقاط يدك: بدّل المحرّك أعلاه، وأرسل لي هذا السطر.')),
         h('div.card', h('h2', 'حول التطبيق'), h('p.small.muted', 'كل المعالجة تتم داخل جهازك: الكاميرا والتدريب والتخزين. لا حساب ولا خادم. صدّر قاموسك من «قاموسي» لتحتفظ بنسخة أو تنقله إلى الحاسوب.'),
           this.installCard(),
+          h('p.small.muted', 'علمياً: نقاط اليد تُستخرج بنموذج MediaPipe (21 نقطة × 63 قيمة)، ثم تُحوّل إلى ميزات هندسية: زوايا الأصابع وبوابات الطيّ وموقع اليد عن الكتفين لتمييز الإشارات المتشابهة في الشكل، ويتعلّم المصنّف الإحصائي من تسجيلاتك أنت، ويُعاد ضبط عتبات الأصابع بمعايرة تُنجز على يدك.'),
           h('div.row', h('span.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي) تعمل بقواعد على نقاط اليد بلا تدريب.')),
           h('p.small.muted', 'يمكنك تسجيل إشارات بيدين، والأبجدية العربية من «قاموسي». ويقيس التطبيق موقع اليد بالنسبة للكتفين لتمييز الإشارات المتشابهة في شكل اليد.'),
           h('p.small.muted', 'دروس تعلم لغة الإشارة جاهزة في قسم «دروس»، مع تمرين الأبجدية المتسلسل في «تعلّم»، وجمل مفضلة وسجل في «ترجمة».')),

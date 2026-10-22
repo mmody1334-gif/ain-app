@@ -34,7 +34,7 @@ export const DEFAULT_COMMANDS = {
   phrases: [],
   sos: { enabled: false, key: null, phone: '', message: 'أحتاج مساعدة عاجلة. أنا أصمّ ولا أستطيع الكلام.', location: true, countdown: 5 },
   pc: {
-    armKey: 'builtin:shape_victory', armSeconds: 25, cooldown: 1.2,
+    armKey: 'builtin:shape_victory', armSeconds: 25, cooldown: 1.2, alwaysArm: false,
     bindings: [
       // حرّك يدك لليسار = الشريحة التالية، ولليمين = السابقة
       { key: 'builtin:swipe_left', action: 'right' },
@@ -73,11 +73,12 @@ export function gestureOptions(app) {
 export class ArmState {
   constructor(cfg) { this.cfg = cfg; this.armedUntil = 0; this.lastFire = -99; this.holdKey = null; this.holdSince = 0; }
   setConfig(cfg) { this.cfg = cfg; }
-  isArmed(t) { return t < this.armedUntil; }
+  isArmed(t) { return !!(this.cfg && this.cfg.alwaysArm) || t < this.armedUntil; }
   remaining(t) { return Math.max(0, this.armedUntil - t); }
   /** event: {key,type,t}. يعيد 'armed' أو action id أو null */
   feed(e) {
     const t = e.t, c = this.cfg;
+    if (c.alwaysArm) this.armedUntil = Math.max(this.armedUntil, t + 1e9);   // وضع «مفعّل دائماً»: بلا إيماءة تسليح
     if (e.key === c.armKey) {
       // حدث التأكيد الثابت يأتي بعد ثبات اليد عادةً، فيكفي لتسليح البرنامج
       this.armedUntil = t + c.armSeconds; return { armed: true };

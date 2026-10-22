@@ -58,6 +58,29 @@ export function toFusha(text) {
 const AR_NAMES = /majed|maged|hamed|hamid|tariq|tarik|salma|laila|layla|arabic|العربية|naayf|zeina|hoda/i;
 const FUSHA_PREFS = ['ar-sa', 'ar-eg', 'ar-ae', 'ar-jo', 'ar-kw', 'ar-qa', 'ar-bh', 'ar-om', 'ar'];
 
+// تمييز جنس الصوت (ذكر/أنثى) من اسمه — أسماء الأصوات العربية المعروفة في الأنظمة.
+const NAMES_FEMALE = /salma|amira|amina|laila|layla|hoda|zeina|zariyah|hind|sana|fatima|maryam|mariam|heba|rania|najat|zowena|woman|female|zira|noor/i;
+const NAMES_MALE = /maged|majed|tariq|tarik|hamed|hamid|naayf|nayef|fahed|hussein|amr|ibrahim|ahmed|muhammad|mohammed|abdullah|man\b|male|karim|bassel|yaakov/i;
+
+/** قِس جنس الصوت من اسمه: 'female' | 'male' | 'unknown'. */
+export function genderOf(v) {
+  const n = String(v?.name || '').toLowerCase();
+  if (NAMES_FEMALE.test(n)) return 'female';
+  if (NAMES_MALE.test(n)) return 'male';
+  return 'unknown';
+}
+
+const _displayNames = (() => {
+  try { return new Intl.DisplayNames(['ar'], { type: 'language' }); } catch (e) { return null; }
+})();
+
+/** اسم عربي مقروء لرمز لغة مثل en-US → «الإنجليزية (US)». */
+export function langLabel(code) {
+  const [base, region] = String(code || '').split('-');
+  const name = _displayNames ? (_displayNames.of(base) || base) : base;
+  return region ? `${name} (${region.toUpperCase()})` : name;
+}
+
 export const tts = {
   get supported() { return !!synth; },
   /** كل الأصوات العربية المتاحة، مرتّبة: الفصحى أولاً. */
@@ -69,20 +92,54 @@ export const tts = {
       .sort((a, b) => b.score - a.score)
       .map((x) => x.v);
   },
-  arabicVoice(pref = 'ar-SA') {
+  /** كل اللغات المثبّتة في الجهاز كواجهات (العربية أولاً): [{code, label}] على مستوى اللغة الأساسية. */
+  languages() {
     if (!voices.length) loadVoices();
-    const ar = voices.filter((v) => /^ar([-_]|$)/i.test(v.lang));
-    if (!ar.length) return null;
-    if (pref) { const exact = ar.find((v) => v.lang.toLowerCase() === pref.toLowerCase()); if (exact) return exact; }
-    return ar.map((v) => ({ v, score: voiceScore(v, pref) })).sort((a, b) => b.score - a.score)[0].v;
+    const seen = new Map();
+    for (const v of voices) {
+      const base = (v.lang || '').split('-')[0].toLowerCase();
+      if (!base) continue;
+      if (!seen.has(base)) seen.set(base, { code: base, label: langLabel(base), isArabic: base === 'ar' });
+    }
+    return [...seen.values()].sort((a, b) => (b.isArabic - a.isArabic) || a.label.localeCompare(b.label, 'ar'));
   },
-  get hasArabic() { return !!this.arabicVoice(); },
+  /** أصوات لغة (أساس) مع مرشّح جنس اختياري: 'auto' | 'male' | 'female'. */
+  voicesFor(base, gender = 'auto') {
+    if (!voices.length) loadVoices();
+    let pool = voices.filter((v) => (v.lang || '').toLowerCase().startsWith(String(base).toLowerCase()));
+    if (gender === 'male' || gender === 'female') {
+      const g = pool.filter((v) => genderOf(v) === gender);
+      if (g.length) pool = g;
+    }
+    // ترتيب: أصوات من نفس الدولة أولاً ثم الأقرب للفصحى (للعربية)
+    const pref = base.toLowerCase() === 'ar' ? 'ar-SA' : String(base);
+    return [...pool].sort((a, b) => voiceScore(b, pref) - voiceScore(a, pref));
+  },
+  arabicVoice(pref = 'ar-SA') {
+    return this.pickVoice('', pref) || null;
+  },
+  /** اختيار صوت: uri محدد فذاته؛ وإلا فلتر اللغة (أول حرفين) والجنس؛ وإلا أي صوت. */
+  pickVoice(uri, lang = 'ar-SA', gender = 'auto') {
+    if (!voices.length) loadVoices();
+    if (uri) { const v = voices.find((x) => x.voiceURI === uri); if (v) return v; }
+    if (!voices.length) return null;
+    const l = String(lang || 'ar').toLowerCase();
+    let pool = voices.filter((v) => (v.lang || '').toLowerCase().startsWith(l.slice(0, 2)));
+    if (!pool.length && !l.startsWith('ar')) pool = voices.filter((v) => (v.lang || '').toLowerCase().startsWith('en'));
+    if (gender === 'male' || gender === 'female') {
+      const g = pool.filter((v) => genderOf(v) === gender);
+      if (g.length) pool = g;
+    }
+    if (!pool.length) return null;
+    const pref = l.startsWith('ar') ? 'ar-SA' : l;
+    return [...pool].sort((a, b) => voiceScore(b, pref) - voiceScore(a, pref))[0];
+  },
+  get hasArabic() { return !!this.pickVoice('', 'ar-SA'); },
   speak(text, opt = {}) {
     if (!synth || !text) return false;
     try {
       const u = new SpeechSynthesisUtterance(opt.fusha === false ? text : toFusha(text));
-      const chosen = opt.voiceURI ? voices.find((v) => v.voiceURI === opt.voiceURI) : null;
-      const v = chosen || this.arabicVoice(opt.lang);
+      const v = this.pickVoice(opt.voiceURI, opt.lang, opt.gender);
       u.lang = v ? v.lang : (opt.lang || 'ar-SA');
       if (v) u.voice = v;
       u.rate = opt.rate ?? 0.92;
@@ -96,9 +153,12 @@ export const tts = {
     } catch (e) { return false; }
   },
   cancel() { try { synth?.cancel(); } catch (e) { /* لا شيء */ } },
-};
-
-function voiceScore(v, pref) {
+  /** يلد مرة واحدة عند تغيّر الأصوات (مثلاً بعد ما يفحصها المتصفح) — وأول نداء فوري بعد التحميل. */
+  onVoicesChanged(cb) {
+    if (!synth) return;
+    synth.addEventListener?.('voiceschanged', () => { loadVoices(); cb(); });
+  },
+};function voiceScore(v, pref) {
   const lang = (v.lang || '').toLowerCase();
   let s = 0;
   if (pref && lang === pref.toLowerCase()) s += 100;

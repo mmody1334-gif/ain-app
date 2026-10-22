@@ -9,7 +9,7 @@ export function buildPcConfig({ engine, pc, holdSec }) {
   }
   return {
     format: 'ain-pc', version: 1, holdSec,
-    arm: { key: pc.armKey, seconds: pc.armSeconds }, cooldown: pc.cooldown, bindings: pc.bindings,
+    arm: { key: pc.armKey, seconds: pc.armSeconds, alwaysArmed: !!pc.alwaysArm }, cooldown: pc.cooldown, bindings: pc.bindings,
     signs: engine.signs.map((s) => ({ id: s.id, word: s.word, kind: s.kind, rule: s.rule || null })),
     classifier,
     sig: Object.fromEntries(engine.sig || []),

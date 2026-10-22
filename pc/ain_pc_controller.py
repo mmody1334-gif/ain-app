@@ -501,13 +501,14 @@ class ArmState:
     def __init__(self, cfg):
         self.arm_key = cfg['arm']['key']
         self.arm_seconds = cfg['arm']['seconds']
+        self.always = bool(cfg['arm'].get('alwaysArmed'))
         self.cooldown = cfg.get('cooldown', 1.2)
         self.bindings = {b['key']: b['action'] for b in cfg.get('bindings', [])}
         self.armed_until = 0.0
         self.last_fire = -99.0
 
     def armed(self, t):
-        return t < self.armed_until
+        return self.always or t < self.armed_until
 
     def remaining(self, t):
         return max(0.0, self.armed_until - t)
@@ -653,7 +654,7 @@ def main():
             pts = [(int((1 - x) * w), int(y * h)) for x, y, _ in lm]
             for a, b in HAND_CONNECTIONS:
                 cv2.line(view, pts[a], pts[b], (60, 200, 140), 2)
-        st = 'ARMED %ds' % math.ceil(arm.remaining(t)) if arm.armed(t) else 'LOCKED (show arm gesture: %s)' % label(arm.arm_key)
+        st = 'ARMED (always)' if arm.always else ('ARMED %ds' % math.ceil(arm.remaining(t)) if arm.armed(t) else 'LOCKED (show arm gesture: %s)' % label(arm.arm_key))
         cv2.putText(view, st, (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 220, 120) if arm.armed(t) else (0, 160, 255), 2)
         if t - last_msg_t < 1.5:
             cv2.putText(view, last_msg, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)

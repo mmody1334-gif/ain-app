@@ -4,7 +4,7 @@ import { h, btn, icon, toast } from '../ui.js';
 const MAX_HIST = 30;
 
 export function createTranslateView(app) {
-  let root, slot, bigEl, sentEl, tipEl, words = [], off = null, activeEl = null, camBtn, favEl, histEl;
+  let root, slot, bigEl, sentEl, tipEl, words = [], off = null, activeEl = null, camBtn, favEl, histEl, quickEl;
   let saved = { favs: [], hist: [] };
 
   async function loadSent() { saved = { favs: [], hist: [], ...(await app.store.getMeta('sentences', null)) }; }
@@ -20,6 +20,12 @@ export function createTranslateView(app) {
 
   function renderSaved() {
     if (!favEl || !histEl) return;
+    // شريط نطق سريع: كل جملة مفضلة تُنطق بضغطة واحدة — ذاكرة جاهزة للمواقف
+    if (quickEl) {
+      quickEl.innerHTML = '';
+      if (saved.favs.length) quickEl.append(h('div.row', { style: { gap: '6px', flexWrap: 'wrap' } },
+        saved.favs.slice(0, 8).map((s) => h('button.btn.sm', { type: 'button', title: 'انطق الآن', onclick: () => { loadSentence(s, true); } }, s.text.split(' ').slice(0, 3).join(' ') + (s.text.split(' ').length > 3 ? '…' : '')))));
+    }
     favEl.innerHTML = '';
     histEl.innerHTML = '';
     if (!saved.favs.length) { favEl.append(h('p.small.muted', 'لا جمل مفضلة بعد. كوّن جملة من الإشارات ثم اضغط زر النجمة لتحفظها.')); }
@@ -91,6 +97,14 @@ export function createTranslateView(app) {
     void st;
   }
 
+function quickShare() {
+  const t = words.map((w) => w.text).join(' ');
+  if (!t) { toast('لا جملة للمشاركة', 'bad'); return; }
+  const copy = () => navigator.clipboard?.writeText(t).then(() => toast('نُسِخت الجملة', 'ok')).catch(() => {});
+  if (navigator.share) navigator.share({ text: t }).catch(copy);
+  else copy();
+}
+
   return {
     mount(el) {
       root = el;
@@ -100,13 +114,15 @@ export function createTranslateView(app) {
       tipEl = h('div');
       favEl = h('div');
       histEl = h('div');
+      quickEl = h('div');
       camBtn = null;
       const actions = h('div.row',
         btn('انطق الجملة', { ic: 'speaker', cls: 'primary grow', onclick: () => { const t = words.map((w) => w.text).join(' '); if (t) { app.say(t); recordHistory(); } } }),
         btn('', { ic: 'star', cls: 'ghost', title: 'احفظ في المفضلة', onclick: saveFav }),
+        btn('', { ic: 'share', cls: 'ghost', title: 'مشاركة أو نسخ الجملة', onclick: quickShare }),
         btn('', { ic: 'undo', cls: 'ghost', title: 'تراجع', onclick: () => { words.pop(); renderSentence(); } }),
         btn('', { ic: 'trash', cls: 'ghost', title: 'مسح', onclick: () => { words = []; bigEl.textContent = ''; renderSentence(); } }));
-      root.append(slot, bigEl, sentEl, actions, tipEl,
+      root.append(slot, bigEl, sentEl, actions, quickEl, tipEl,
         h('div.card', h('h2', 'جملي المفضلة'), favEl),
         h('div.card', h('h2', 'السجل'), histEl));
       loadSent().then(renderSaved);
@@ -119,7 +135,7 @@ export function createTranslateView(app) {
       app.cam.showSkeleton = app.settings.skeleton;
       off = app.cam.onFrame(onEvent);
       renderTip();
-      renderSaved();
+      loadSent().then(renderSaved);
     },
     hide() { off?.(); off = null; app.unmountStage(); recordHistory(); },
   };
