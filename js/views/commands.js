@@ -160,19 +160,41 @@ export function createCommandsView(app) {
       sel(b.key, (v) => { b.key = v; save(); }, opts), h('div.row', h('div.grow', sel(b.action, (v) => { b.action = v; save(); }, ACTIONS)), h('button.iconbtn', { 'aria-label': 'حذف', onclick: () => { pc.bindings.splice(i, 1); save(); renderPc(); } }, icon('trash'))))));
     simEl = h('div.card', { style: { alignItems: 'center', textAlign: 'center', background: 'var(--surface2)' } }, h('span.small.muted', 'محاكاة داخل المتصفح (لا تضغط أزرار حاسوبك)'), h('div.bigword.n', `${slide} / 8`), h('span.kbd.k', '—'));
     armEl = h('span.chip-status', '');
+    // ضبط سريع لتنقّل الشرائح: اليسار = التالي، اليمين = السابق
+    const applyNav = () => {
+      const rest = pc.bindings.filter((b) => b.key !== 'builtin:swipe_left' && b.key !== 'builtin:swipe_right');
+      pc.bindings = [
+        { key: 'builtin:swipe_left', action: 'right' },
+        { key: 'builtin:swipe_right', action: 'left' },
+        ...rest,
+      ];
+      arm.setConfig(pc); save(); renderPc(); toast('تم الضبط: يسار = التالي، يمين = السابق', 'ok');
+    };
     pcBox.append(
       h('p.small.muted', 'تشغّل برنامجاً صغيراً على الحاسوب (بكاميرته) فيضغط الأزرار عند إيماءاتك: تنقّل بين شرائح PowerPoint، تحكم بالفيديو والصوت، وغيرها. جرّب الإيماءات هنا أولاً.'),
       h('label.field', h('span', 'إيماءة التسليح (تثبّتها لتفعيل التحكم، فلا تضغط الأزرار إلا بعدها)'), sel(pc.armKey, (v) => { pc.armKey = v; arm.setConfig(pc); save(); }, opts)),
       h('label.field', h('span', 'مدة بقاء التحكم مسلَّحاً بعد آخر أمر (ثوانٍ)'), secs),
-      h('div.row.between', h('b', 'الأوامر'), armEl), rows,
+      h('div.row.between', h('b', 'الأوامر'), armEl),
+      h('div.row.between', { style: { gap: '8px' } },
+        h('span.small.muted', 'الافتراضي: تحريك اليد لليسار = التالي، ولليمين = السابق'),
+        btn('اضبط تنقّل الشرائح', { cls: 'ghost sm', ic: 'bolt', onclick: applyNav })),
+      rows,
       btn('أضف أمراً', { cls: 'ghost', ic: 'plus', onclick: () => { pc.bindings.push({ key: opts[0].key, action: 'right' }); save(); renderPc(); } }),
       simEl,
       h('div.row', btn('صدّر إعداد الحاسوب', { cls: 'primary', ic: 'download', onclick: exportPc }), h('a.btn.ghost', { href: 'pc/ain_pc_controller.py', download: 'ain_pc_controller.py' }, icon('download'), h('span', 'برنامج الحاسوب'))),
-      h('details', h('summary', 'كيف أشغّله على الحاسوب؟'), h('ol.small', { style: { paddingInlineStart: '20px', lineHeight: '1.9' } },
-        h('li', 'نزّل «برنامج الحاسوب» و«صدّر إعداد الحاسوب»، وضع الملفين في مجلد واحد.'),
-        h('li', 'ثبّت المكتبات مرة واحدة: ', h('span.kbd', 'py -m pip install opencv-python mediapipe numpy')),
-        h('li', 'ضع ملف ', h('span.kbd', 'hand_landmarker.task'), ' في المجلد نفسه (هو نفسه من مشروعك الأول).'),
-        h('li', 'شغّل: ', h('span.kbd', 'py ain_pc_controller.py')), h('li', 'افتح PowerPoint، ثبّت إيماءة التسليح ثانية، ثم مرّر يدك للتنقّل. اضغط Q للخروج.')))
+      h('details', { open: true }, h('summary', 'تثبيت برنامج الحاسوب خطوة بخطوة'),
+        h('ol.small', { style: { paddingInlineStart: '20px', lineHeight: '1.9' } },
+          h('li', 'ثبّت Python 3.10–3.12 من python.org، وفعّل خيار «Add Python to PATH» أثناء التثبيت.'),
+          h('li', 'نزّل ثلاثة ملفات وضعها في مجلد واحد: ', h('b', 'ain_pc_controller.py'), '، و', h('b', 'control_config.json'), ' من زر «صدّر إعداد الحاسوب»، و', h('b', 'hand_landmarker.task'), ' من الرابط أدناه.'),
+          h('li', 'افتح Terminal أو CMD في المجلد، ونفّذ مرة واحدة: ', h('span.kbd', 'py -m pip install opencv-python mediapipe numpy')),
+          h('li', 'شغّل: ', h('span.kbd', 'py ain_pc_controller.py'), ' واسمح للبرنامج باستخدام الكاميرا.'),
+          h('li', 'افتح PowerPoint، اعرض إيماءة التسليح (حرف V افتراضياً) ثانيتين، ثم حرّك يدك لليسار للشريحة التالية ولليمين للسابقة.'),
+          h('li', 'اضغط ', h('span.kbd', 'Q'), ' لإيقاف البرنامج.')),
+        h('p.small.muted', 'إذا لم تظهر الكاميرا فأغلق أي برنامج آخر يستخدمها. وإذا فشل تثبيت mediapipe فاستخدم Python 3.11.'),
+        h('div.row',
+          h('a.btn.ghost.sm', { href: 'https://www.python.org/downloads/', target: '_blank', rel: 'noopener' }, icon('download'), h('span', 'تحميل Python')),
+          h('a.btn.ghost.sm', { href: 'vendor/hand_landmarker.task', download: 'hand_landmarker.task' }, icon('download'), h('span', 'نموذج اليد')),
+          h('a.btn.ghost.sm', { href: 'pc/ain_pc_controller.py', download: 'ain_pc_controller.py' }, icon('download'), h('span', 'برنامج التحكم'))))
     );
     renderArm();
   }

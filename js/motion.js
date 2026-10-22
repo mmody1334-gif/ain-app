@@ -295,13 +295,13 @@ export const BUILTIN_SHAPES = [
   { id: 'shape_open',    name: 'كف مفتوحة',      pattern: 'EEEEE' },
   { id: 'shape_fist',    name: 'قبضة',           pattern: 'CCCCC' },
   { id: 'shape_point',   name: 'سبّابة مرفوعة',  pattern: '?ECCC' },
-  { id: 'shape_victory', name: 'حرف V',          pattern: '?EECC' },
+  { id: 'shape_victory', name: 'حرف V',          pattern: 'CEECC' },
   { id: 'shape_thumb',   name: 'إبهام مرفوع',    pattern: 'ECCCC' },
-  { id: 'shape_three',   name: 'ثلاثة أصابع',    pattern: '?EEEC' },
-  { id: 'shape_four',    name: 'أربعة أصابع',    pattern: '?EEEE' },
+  { id: 'shape_three',   name: 'ثلاثة أصابع',    pattern: 'CEEEC' },
+  { id: 'shape_four',    name: 'أربعة أصابع',    pattern: 'CEEEE' },
   { id: 'shape_call',    name: 'اتصل بي',        pattern: 'ECCCE' },
   { id: 'shape_love',    name: 'أحبّك',          pattern: 'EECCE' },
-  { id: 'shape_pinky',   name: 'خنصر فقط',       pattern: '?CCCE' },
+  { id: 'shape_pinky',   name: 'خنصر فقط',       pattern: 'CCCCE' },
 ];
 
 /**

@@ -31,6 +31,9 @@ export class Engine {
     this._resetHold();
     this.lock = null; this.lockSince = 0; this.lastSeen = -1;
     this.motionUntil = 0;      // بعد أي حركة: مهلة قصيرة قبل قبول الوضعيات الثابتة
+    this.staticUntil = 0;      // بعد نطق إشارة: مهلة قصيرة تمنع تكرارها من اهتزاز بسيط
+    this.lockOther = null;     // إشارة مختلفة ظهرت للتو: لا نلغي القفل إلا إذا ثبتت
+    this.lockLostSince = 0;
     this.lastPred = null;
     this.ready = false;
     this.trainInfo = null;
@@ -80,7 +83,7 @@ export class Engine {
 
   reset() {
     this.tracker.reset(); this.segmenter.reset(); this._resetHold();
-    this.lock = null; this.motionUntil = 0;
+    this.lock = null; this.motionUntil = 0; this.staticUntil = 0; this.lockOther = null; this.lockLostSince = 0;
   }
 
   _signFor(kind, id) {
@@ -112,7 +115,7 @@ export class Engine {
     if (seg) this._onSegment(seg, out);
 
     // ----- ثبات -----
-    if (!out.moving && frame.speed < this.staticSpeedMax && t >= (this.motionUntil || 0)) this._static(t, frame, out);
+    if (!out.moving && frame.speed < this.staticSpeedMax && t >= (this.motionUntil || 0) && t >= (this.staticUntil || 0)) this._static(t, frame, out);
     else if (this.hold.key) { this._resetHold(); }
     out.hold = this.hold.key ? { key: this.hold.key, progress: Math.min(1, (t - this.hold.since) / this.holdSec), sign: this.hold.sign, id: this.hold.id } : null;
     return out;
@@ -143,10 +146,20 @@ export class Engine {
     const hh = this.hold;
     if (hh.key && t - hh.since >= this.holdSec && this.lock !== hh.key) {
       this.lock = hh.key;
+      this.staticUntil = t + 0.4;
+      this.lockOther = null; this.lockLostSince = 0;
       out.events.push({ type: hh.kind === 'shape' ? 'shape' : 'static', key: hh.key, id: hh.id, sign: hh.sign, conf: hh.conf, t });
     }
-    if (cand && this.lock && cand.key !== this.lock) this.lock = null;
-    if (!cand && this.lock && t - hh.lastGood > 0.35) this.lock = null;
+    // لا نلغي قفل الإشارة إلا إذا ظهرت إشارة أخرى وثبتت، أو غابت اليد فعلاً.
+    // إلغاء القفل بإطار واحد كان يسمح بتكرار الكلمة نفسها من اهتزاز بسيط.
+    if (cand && this.lock && cand.key !== this.lock) {
+      if (!this.lockOther || this.lockOther.key !== cand.key) this.lockOther = { key: cand.key, since: t };
+      else if (t - this.lockOther.since > 0.35) this.lock = null;
+    } else this.lockOther = null;
+    if (!cand && this.lock) {
+      if (!this.lockLostSince) this.lockLostSince = t;
+      else if (t - this.lockLostSince > 0.35) this.lock = null;
+    } else this.lockLostSince = 0;
   }
 
   _fingerGate(label, p, ext, tdist) {

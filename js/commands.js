@@ -2,8 +2,8 @@
 import { BUILTIN_NAMES } from './names.js';
 
 export const ACTIONS = [
-  { id: 'right', label: 'السهم ← التالي (شريحة تالية)' },
-  { id: 'left', label: 'السهم → السابق (شريحة سابقة)' },
+  { id: 'right', label: 'السهم → التالي (الشريحة التالية)' },
+  { id: 'left', label: 'السهم ← السابق (الشريحة السابقة)' },
   { id: 'up', label: 'السهم للأعلى' },
   { id: 'down', label: 'السهم للأسفل' },
   { id: 'pagedown', label: 'Page Down' },
@@ -36,6 +36,7 @@ export const DEFAULT_COMMANDS = {
   pc: {
     armKey: 'builtin:shape_victory', armSeconds: 25, cooldown: 1.2,
     bindings: [
+      // حرّك يدك لليسار = الشريحة التالية، ولليمين = السابقة
       { key: 'builtin:swipe_left', action: 'right' },
       { key: 'builtin:swipe_right', action: 'left' },
       { key: 'builtin:shape_fist', action: 'b' },
