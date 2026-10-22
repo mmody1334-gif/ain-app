@@ -7,7 +7,10 @@ import { CameraHub } from './camera.js';
 import { tts, stt } from './speech.js';
 import { buildIndex } from './arabic.js';
 import { BUILTIN_NAMES } from './names.js';
-import { POSE_LEN, poseToFeatures } from './features.js';
+import { POSE_LEN, poseToFeatures, FEATURE_LEN } from './features.js';
+import { setFingerCalibration } from './motion.js';
+import { runCalibration } from './calibrate.js';
+import { MODEL_VERSION } from './classifier.js';
 import { createTranslateView } from './views/translate.js';
 import { createListenView } from './views/listen.js';
 import { createLearnView } from './views/learn.js';
@@ -37,6 +40,26 @@ function medoidPose(samples) {
   return Array.from(samples[best].slice(0, POSE_LEN), (v) => +v.toFixed(4));
 }
 
+/** بصمة الإشارات الثابتة: تتغير عند أي تعديل في العيّنات أو المصدر، فيُعاد التدريب. */
+function modelKey(groups) {
+  let h = 2166136261;
+  const add = (s) => {
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    h ^= 0x9e; h = Math.imul(h, 16777619);
+  };
+  add('v' + MODEL_VERSION + '|' + FEATURE_LEN);
+  const sorted = groups.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  for (const g of sorted) {
+    add(g.id + ':' + (g.source || '') + ':' + g.samples.length);
+    for (const a of g.samples) {
+      add('n' + a.length);
+      for (let i = 0; i < a.length; i += 5) add(String(Math.round(a[i] * 1000)));
+      add(String(Math.round(a[a.length - 1] * 1000)));
+    }
+  }
+  return (h >>> 0).toString(36) + '-' + sorted.reduce((n, g) => n + g.samples.length, 0);
+}
+
 class App {
   constructor() {
     this.store = new Store();
@@ -60,6 +83,9 @@ class App {
     await this.store.open();
     this.settings = { ...DEFAULT_SETTINGS, ...(await this.store.getMeta('settings', {})) };
     this.progress = await this.store.getMeta('progress', {});
+    // معايرة يد المستخدم قبل بناء النموذج، حتى تُحسب بوابة الأصابع على يده
+    this.calib = await this.store.getMeta('calib', null);
+    setFingerCalibration(this.calib);
     this.applyTheme();
     this.stage = document.getElementById('stage');
     this.cam = new CameraHub(this.engine, { video: this.stage.querySelector('video'), overlay: this.stage.querySelector('canvas.overlay') });
@@ -153,8 +179,19 @@ class App {
     this.training = true; this.trainPct = 0; this.setStatus();
     this.index = buildIndex(this.signs);
     this.engine.holdSec = this.settings.holdSec;
+    const staticData = this.signs.filter((s) => s.kind === 'static' && s.samples && s.samples.length >= 8);
+    const key = modelKey(staticData);
+    let cached = null;
     try {
-      await this.engine.setSigns(this.signs, (p) => { this.trainPct = p; this.setStatus(); this.emit('train', p); });
+      const meta = await this.store.getMeta('model', null);
+      if (meta && meta.key === key && meta.model) cached = meta.model;
+    } catch (e) { /* لا شيء */ }
+    try {
+      const clf = await this.engine.setSigns(this.signs, (p) => { this.trainPct = p; this.setStatus(); this.emit('train', p); }, cached);
+      if (clf && staticData.length && !cached) {
+        try { await this.store.setMeta('model', { key, model: clf.toJSON(), at: Date.now() }); } catch (e) { /* لا شيء */ }
+      }
+      this.modelCached = this.engine.trainInfo === 'cache';
     } catch (e) { console.error(e); toast('تعذّر تدريب النموذج', 'bad'); }
     this.training = false; this.setStatus(); this.emit('signs');
   }
@@ -283,6 +320,7 @@ class App {
     const bar = st.querySelector('.holdbar i');
     const left = st.querySelector('[data-hud="left"]');
     const word = st.querySelector('[data-hud="word"]');
+    const quality = st.querySelector('[data-hud="quality"]');
     const hold = out.hold;
     bar.style.width = hold ? Math.round(hold.progress * 100) + '%' : '0';
     if (!out.hand) { left.textContent = this.cam.diag.errors > 0 ? 'تعذّر كشف اليد: افتح الإعدادات ← التشخيص' : 'ضع يدك أمام الكاميرا'; }
@@ -291,6 +329,25 @@ class App {
     else left.textContent = 'ثبّت يدك';
     if (hold && hold.sign && hold.progress > 0.2) { word.hidden = false; word.textContent = hold.sign.word; word.classList.toggle('ok', hold.progress >= 1); }
     else word.hidden = true;
+    if (quality) {
+      const q = this.qualityOf(out);
+      quality.textContent = q.text;
+      quality.className = 'pill ' + q.cls;
+    }
+  }
+
+  /** مؤشر جودة بسيط: قرب اليد، الإضاءة، سرعة المعالجة، والثبات. */
+  qualityOf(out) {
+    if (!out.hand || !out.frame) return { text: 'لا أرى يدك', cls: 'bad' };
+    const size = out.frame.size || 0;
+    if (size < 0.085) return { text: 'قرّب يدك', cls: 'warn' };
+    if (size > 0.34) return { text: 'أبعد يدك', cls: 'warn' };
+    const light = this.cam.light;
+    if (light != null && light < 45) return { text: 'أضئ المكان', cls: 'warn' };
+    if (this.cam.fps > 0 && this.cam.fps < 9) return { text: 'المعالجة بطيئة', cls: 'warn' };
+    if (out.moving) return { text: 'حركة', cls: 'dim' };
+    if (out.hold) return { text: 'جودة جيدة', cls: 'ok' };
+    return { text: 'ثبّت يدك', cls: 'warn' };
   }
 
   builtinName(id) { return BUILTIN_NAMES[id] || null; }
@@ -331,6 +388,13 @@ class App {
           h('label.field', h('span', 'سرعة النطق'), rate), h('div.row', testBtn, h('span.small.muted', voiceInfo)),
           h('p.small.muted', 'يُضيف التطبيق التشكيل تلقائياً للكلمات الشائعة حتى ينطقها المحرّك بالفصحى، لا بلهجة محلية.')),
         h('div.card', h('label.switch', h('span', 'ارسم نقاط اليد فوق الكاميرا'), skel), h('div.field', h('span.muted.small', 'الكاميرا المفضّلة'), cam), h('div.field', h('span.muted.small', 'المظهر'), theme)),
+        h('div.card', h('h2', 'معايرة يدك'),
+          h('p.small.muted', this.calib
+            ? `آخر معايرة: ${new Date(this.calib.at || Date.now()).toLocaleDateString('ar')} — تعيد ضبط قراءة الأصابع على يدك.`
+            : 'لم تُجرَ معايرة بعد. المعايرة تقيس «مفرود» و«مطوي» على يدك أنت، فتنخفض أخطاء الإصبع.'),
+          h('div.row',
+            btn('معايرة اليد الآن', { cls: 'primary', ic: 'cam', onclick: () => { close(); setTimeout(() => runCalibration(this), 250); } }),
+            btn('إعادة الافتراضي', { cls: 'ghost sm', onclick: async () => { setFingerCalibration(null); this.calib = null; await this.store.setMeta('calib', null); await this.retrain(); toast('أُعيدت العتبات الافتراضية'); } }))),
         h('div.card', h('h2', 'كشف اليد'), h('div.field', h('span.muted.small', 'محرّك الكشف'), det), h('p.small.muted', { dir: 'ltr', style: { textAlign: 'left', wordBreak: 'break-word' } }, diagText), h('p.small.muted', 'إن لم تظهر نقاط يدك: بدّل المحرّك أعلاه، وأرسل لي هذا السطر.')),
         h('div.card', h('h2', 'حول التطبيق'), h('p.small.muted', 'كل المعالجة تتم داخل جهازك: الكاميرا والتدريب والتخزين. لا حساب ولا خادم. صدّر قاموسك من «قاموسي» لتحتفظ بنسخة أو تنقله إلى الحاسوب.'),
           h('p.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي/الأرقام ١–٥) تعمل بقواعد على نقاط اليد بلا تدريب.')),

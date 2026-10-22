@@ -7,6 +7,9 @@
 
 import { FEATURE_LEN, poseToFeatures, perturbPose, mirrorPose, makeRng } from './features.js';
 
+// نسخة الميزات/التدريب: تُرفع عند تغيير الخصائص أو المعمارية لإبطال النموذج المخزَّن.
+export const MODEL_VERSION = 2;
+
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 function softmaxInPlace(z) {

@@ -7,6 +7,7 @@ import { evaluateSeparability, pairSeparation } from '../classifier.js';
 import { normalizeAr, FINGER_WORDS } from '../arabic.js';
 import { SHAPES } from '../handModel.js';
 import { BUILTIN_MOTIONS, dtw } from '../motion.js';
+import { ARABIC_LETTERS, letterProgress, nextMissingLetter } from '../alphabet.js';
 
 const KIND = { static: 'ثابتة', motion: 'متحركة', builtin: 'جاهزة' };
 const FINGER_KEYS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
@@ -59,7 +60,7 @@ function renderNotes(notes) {
 }
 
 export function createDictView(app) {
-  let root, listEl, searchEl, filter = '';
+  let root, listEl, searchEl, alphaEl, filter = '';
 
   // ---------- القائمة ----------
   function renderList() {
@@ -109,12 +110,13 @@ export function createDictView(app) {
   function openRecorder(init = {}) {
     const existing = init.append || null;
     let kind = existing?.kind || 'static';
-    let word = existing?.word || init.word || '';
-    let aliases = existing?.aliases?.join('، ') || '';
+    let letter = existing?.letter || init.letter || null;
+    let word = existing?.word || init.word || letter || '';
+    let aliases = existing?.aliases?.join('، ') || (init.name ? init.name : '');
     let samples = [];          // لقطات ثابتة جديدة
     let takes = [], anim = null;
-    let busy = false, cancelled = false, stage = 'form';
-    const s = sheet(existing ? `إضافة عيّنات: ${existing.word}` : 'إشارة جديدة', (close, body) => {
+    let busy = false, cancelled = false, stage = 'form', alphaDirty = false;
+    const s = sheet(existing ? `إضافة عيّنات: ${existing.word}` : (letter ? `تسجيل حرف «${letter}»` : 'إشارة جديدة'), (close, body) => {
       const content = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
       const render = () => {
         content.innerHTML = '';
@@ -124,12 +126,14 @@ export function createDictView(app) {
       };
 
       function renderForm() {
-        const wi = h('input', { type: 'text', value: word, placeholder: 'الكلمة أو الجملة القصيرة، مثل: شكراً', oninput: (e) => { word = e.target.value; }, disabled: !!existing });
+        const wi = h('input', { type: 'text', value: word, placeholder: 'الكلمة أو الجملة القصيرة، مثل: شكراً', oninput: (e) => { word = e.target.value; }, disabled: !!existing || !!letter });
         const al = h('input', { type: 'text', value: aliases, placeholder: 'مرادفات (اختياري)، مفصولة بفاصلة', oninput: (e) => { aliases = e.target.value; }, disabled: !!existing });
-        const seg = h('div.seg', [['static', 'ثابتة (وضعية يد)'], ['motion', 'متحركة (حركة)']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(kind === v), disabled: !!existing, onclick: (e) => { kind = v; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); help.textContent = helpText(); } }, l)));
-        const helpText = () => kind === 'static' ? 'ثبّت يدك على الوضعية نفسها وحرّكها قليلاً (أقرب/أبعد/ميل بسيط) أثناء التسجيل.' : 'ستكرر الحركة 6 مرات. ابدأ بيدك ساكنة ثم نفّذ الحركة بسلاسة.';
+        const seg = h('div.seg', [['static', 'ثابتة (وضعية يد)'], ['motion', 'متحركة (حركة)']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(kind === v), disabled: !!existing || !!letter, onclick: (e) => { kind = v; seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); help.textContent = helpText(); } }, l)));
+        const helpText = () => letter
+          ? `ثبّت يدك على إشارة حرف «${letter}» (${aliases || ''}) وحرّكها قليلاً أثناء التسجيل.`
+          : kind === 'static' ? 'ثبّت يدك على الوضعية نفسها وحرّكها قليلاً (أقرب/أبعد/ميل بسيط) أثناء التسجيل.' : 'ستكرر الحركة 6 مرات. ابدأ بيدك ساكنة ثم نفّذ الحركة بسلاسة.';
         const help = h('p.small.muted', helpText());
-        content.append(h('label.field', h('span', 'الكلمة'), wi), h('label.field', h('span', 'مرادفات'), al), h('div.field', h('span.muted.small', 'نوع الإشارة'), seg), help,
+        content.append(h('label.field', h('span', letter ? `الحرف «${letter}»` : 'الكلمة'), wi), h('label.field', h('span', 'مرادفات'), al), h('div.field', h('span.muted.small', 'نوع الإشارة'), seg), help,
           btn('التالي: افتح الكاميرا', { cls: 'primary', ic: 'cam', onclick: () => { if (!word.trim()) { wi.focus(); toast('اكتب الكلمة أولاً', 'bad'); return; } stage = 'capture'; render(); } }));
       }
 
@@ -199,9 +203,10 @@ export function createDictView(app) {
           const w = word.trim();
           let sign = existing;
           if (!sign) {
-            sign = { id: uid(), word: w, aliases: aliases.split(/[,،]/).map((x) => x.trim()).filter(Boolean), kind, source: 'user', created: Date.now() };
+            sign = { id: uid(), word: w, aliases: aliases.split(/[,،]/).map((x) => x.trim()).filter(Boolean), kind, source: letter ? 'alphabet' : 'user', created: Date.now() };
+            if (letter) sign.letter = letter;
             const dup = app.signs.find((x) => normalizeAr(x.word) === normalizeAr(w));
-            if (dup && dup.kind === kind) { sign = dup; }
+            if (dup && dup.kind === kind) { sign = dup; if (letter) sign.letter = letter; }
             else if (dup) { toast('توجد إشارة بنفس الكلمة بنوع مختلف؛ تم الحفظ كإشارة منفصلة', ''); }
           }
           if (kind === 'static') {
@@ -210,7 +215,12 @@ export function createDictView(app) {
             sign.samples = all; delete sign.ref;
           } else { sign.takes = (sign.takes || []).concat(takes).slice(-10); if (anim && !sign.anim) sign.anim = anim; }
           const off = app.on('train', (p) => { if (app._tm) app._tm.style.width = Math.round(p * 100) + '%'; });
-          await app.saveSign(sign);
+          await app.saveSign(sign, { retrain: !letter });
+          if (letter) {
+            alphaDirty = true;
+            // ندرّب مرة واحدة عند إكمال الأبجدية، لا بعد كل حرف
+            if (!nextMissingLetter(app.signs, letter)) { await app.retrain(); alphaDirty = false; }
+          }
           off();
           renderResult(sign);
         }
@@ -219,12 +229,17 @@ export function createDictView(app) {
           content.innerHTML = '';
           const notes = similarityFor(app, sign);
           const worst = notes[0];
+          const nx = letter ? nextMissingLetter(app.signs, letter) : null;
+          const nextBtn = letter
+            ? (nx ? btn(`الحرف التالي: ${nx.ch}`, { cls: 'primary', ic: 'chev', onclick: () => { close(); setTimeout(() => openRecorder({ letter: nx.ch, name: nx.name, word: nx.ch }), 180); } })
+              : btn('الأبجدية مكتملة ✓', { cls: 'primary', ic: 'check', onclick: () => { close(); openAlphabet(); } }))
+            : btn('إشارة أخرى', { cls: 'ghost', ic: 'plus', onclick: () => { close(); openRecorder({}); } });
           content.append(h('div.card', h('h2', 'تم حفظ «' + sign.word + '»'),
             !notes.length ? h('p.small.muted', 'لا توجد إشارات من النوع نفسه للمقارنة بعد.')
               : worst.level !== 'ok' ? h('p', { style: { color: 'var(--bad)', fontWeight: 600 } }, 'تنبيه: قد يخلط التطبيق بينها وبين إشارات أخرى.')
               : h('p', { style: { color: 'var(--ok)', fontWeight: 600 } }, 'الإشارة واضحة ومختلفة عن الباقي.'),
             notes.length ? renderNotes(notes) : null),
-            h('div.row', btn('جرّبها الآن', { cls: 'primary', ic: 'play', onclick: () => { close(); app.go('translate'); } }), btn('إشارة أخرى', { cls: 'ghost', ic: 'plus', onclick: () => { close(); openRecorder({}); } }), btn('تم', { cls: 'ghost', onclick: close })));
+            h('div.row', btn('جرّبها الآن', { cls: 'primary', ic: 'play', onclick: () => { close(); app.go('translate'); } }), nextBtn, btn('تم', { cls: 'ghost', onclick: close })));
         }
 
         refreshActions();
@@ -232,7 +247,7 @@ export function createDictView(app) {
       }
       render();
       return content;
-    }, { persistent: true, onClose: () => { cancelled = true; app.stopCamera(); app.unmountStage(); renderList(); } });
+    }, { persistent: true, onClose: () => { cancelled = true; app.stopCamera(); app.unmountStage(); renderList(); if (alphaDirty) app.retrain().catch(() => {}); } });
     return s;
   }
 
@@ -262,7 +277,43 @@ export function createDictView(app) {
     });
   }
 
-  // ---------- تقرير الخلط ----------
+  // ---------- الأبجدية ----------
+  function renderAlphabet() {
+    if (!alphaEl) return;
+    const p = letterProgress(app.signs);
+    alphaEl.innerHTML = '';
+    const meter = h('div.meter.grow', h('i', { style: { width: Math.round((p.done / p.total) * 100) + '%' } }));
+    alphaEl.append(
+      h('h2', 'الأبجدية العربية'),
+      h('p.small.muted', 'سجّل الحروف مرة واحدة بيدك، ثم يستطيع وضع «اسمع» تهجئة الأسماء والكلمات غير الموجودة في القاموس. لا يخترع التطبيق أشكال الحروف.'),
+      h('div.row.between', meter, h('span.small.muted', `${p.done} / ${p.total}`)),
+      h('div.row',
+        btn(p.done ? 'استعراض الأبجدية' : 'افتح الأبجدية', { cls: 'primary', ic: 'plus', onclick: openAlphabet }),
+        p.done < p.total ? btn('الحرف التالي', { cls: 'ghost', ic: 'chev', onclick: () => { const nx = nextMissingLetter(app.signs); if (nx) openRecorder({ letter: nx.ch, name: nx.name, word: nx.ch }); } }) : null));
+  }
+
+  function openAlphabet() {
+    sheet('الأبجدية العربية', (close) => {
+      const grid = h('div.alpha-grid');
+      const render = () => {
+        grid.innerHTML = '';
+        const p = letterProgress(app.signs);
+        for (const l of ARABIC_LETTERS) {
+          const done = p.doneSet.has(l.ch);
+          grid.append(h('button.alpha' + (done ? '.done' : ''), {
+            type: 'button',
+            onclick: () => { close(); setTimeout(() => openRecorder({ letter: l.ch, name: l.name, word: l.ch }), 180); },
+          }, h('span', l.ch), h('small', done ? '✓' : l.name)));
+        }
+      };
+      render();
+      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
+        h('p.small.muted', 'اضغط أي حرف لتسجيل إشارته. الحروف الخضراء مسجّلة؛ الضغط عليها يضيف عيّنات أكثر.'),
+        grid,
+        btn('تم', { cls: 'primary block', onclick: close }));
+    }, { onClose: () => renderAlphabet() });
+  }
+
   function openReport() {
     sheet('تقرير الخلط بين الإشارات', (close, body) => {
       const box = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } }, h('div.row', h('span.spin'), h('span', 'جارٍ الفحص…')));
@@ -342,13 +393,15 @@ export function createDictView(app) {
       root = el;
       searchEl = h('input', { type: 'search', placeholder: 'ابحث في القاموس', oninput: (e) => { filter = e.target.value; renderList(); } });
       listEl = h('div.list');
+      alphaEl = h('div.card');
       root.append(
         h('div.card', h('h2', 'قاموسي'), h('p.sub', 'كل إشارة تُسجَّل من نقاط يدك أنت، فتتعلم عليك أنت. أضف ما تشاء من الإشارات.'),
           h('div.row', btn('إشارة جديدة', { cls: 'primary grow', ic: 'plus', onclick: () => openRecorder({}) }), btn('جاهزة', { cls: 'ghost', ic: 'bolt', onclick: openQuickAdd })),
           h('div.row', btn('تقرير الخلط', { cls: 'ghost sm', ic: 'warn', onclick: openReport }), btn('تصدير', { cls: 'ghost sm', ic: 'download', onclick: exportData }), btn('استيراد', { cls: 'ghost sm', ic: 'upload', onclick: importData }))),
-        searchEl, listEl);
+        alphaEl, searchEl, listEl);
       app.on('signs', renderList);
-      renderList();
+      app.on('signs', renderAlphabet);
+      renderList(); renderAlphabet();
     },
     show() {
       renderList();

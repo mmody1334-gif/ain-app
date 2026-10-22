@@ -306,33 +306,75 @@ export const BUILTIN_SHAPES = [
 
 /**
  * حالة كل إصبع: E مفرود، C مطوي، H بين بين.
- * عتبات الاستقامة مضبوطة على أيدٍ حقيقية (يد مفتوحة طبيعية ≈ 0.80 لا 0.95)،
- * والإبهام يُقاس بمسافة طرفه عن قاعدة السبابة مع زاوية انثنائه، فلا ينقلب بين E وC.
+ * تُقاس الاستقامة على مقياس المستخدم نفسه بعد «معايرة اليد»: ماذا يعني
+ * «مفرود» و«مطوي» عند يده هو، لا عند يد أخرى.
  */
-export const FINGER_E = 0.75;
-export const FINGER_C = 0.64;
+const DEFAULT_CAL = {
+  open: [0.95, 0.99, 0.99, 0.99, 0.99],
+  fist: [0.85, 0.45, 0.45, 0.45, 0.43],
+  thumbOpen: 0.88,
+  thumbFist: 0.50,
+};
+const cloneCal = (c) => ({ open: c.open.slice(), fist: c.fist.slice(), thumbOpen: c.thumbOpen, thumbFist: c.thumbFist });
+let CAL = cloneCal(DEFAULT_CAL);
+
+/** يثبّت معايرة يد المستخدم (أو يعيد الافتراضي عند تمرير null). */
+export function setFingerCalibration(cal) {
+  const out = cloneCal(DEFAULT_CAL);
+  const num = (v) => typeof v === 'number' && Number.isFinite(v);
+  if (cal) {
+    for (let i = 0; i < 5; i++) {
+      const o = cal.open?.[i], f = cal.fist?.[i];
+      if (num(o) && num(f) && o - f > 0.08) { out.open[i] = o; out.fist[i] = f; }
+    }
+    if (num(cal.thumbOpen) && num(cal.thumbFist) && cal.thumbOpen - cal.thumbFist > 0.06) {
+      out.thumbOpen = cal.thumbOpen; out.thumbFist = cal.thumbFist;
+    }
+  }
+  CAL = out;
+}
+export function getFingerCalibration() { return cloneCal(CAL); }
+
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+function normExt(v, i) {
+  const span = CAL.open[i] - CAL.fist[i];
+  return span > 0.06 ? clamp01((v - CAL.fist[i]) / span) : clamp01((v - 0.45) / 0.5);
+}
+function normThumb(v) {
+  const span = CAL.thumbOpen - CAL.thumbFist;
+  return span > 0.06 ? clamp01((v - CAL.thumbFist) / span) : clamp01((v - 0.55) / 0.33);
+}
 
 export function fingerStates(p, extIn, tdistIn) {
   const ext = extIn || fingerExtension(p);
   const tdist = tdistIn == null ? thumbGap(p) : tdistIn;
   const tc = fingerCurls(p)[0];
-  const th = (tdist >= 0.73 && tc <= 0.55) || tdist >= 0.82 ? 'E'
-    : (tdist <= 0.63 || tc >= 0.62) ? 'C' : 'H';
+  const nt = normThumb(tdist);
+  const th = (nt >= 0.55 && tc <= 0.58) || tdist >= 0.86 ? 'E'
+    : (nt <= 0.32 || tc >= 0.62) ? 'C' : 'H';
   const st = [th];
-  for (let i = 1; i < 5; i++) st.push(ext[i] >= FINGER_E ? 'E' : ext[i] <= FINGER_C ? 'C' : 'H');
+  for (let i = 1; i < 5; i++) {
+    const e = normExt(ext[i], i);
+    st.push(e >= 0.58 ? 'E' : e <= 0.32 ? 'C' : 'H');
+  }
   return st;
 }
 
 const smooth01 = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
-/** تقييم متصل (0..1) لمدى مطابقة شكل اليد لنمط مثل EECCE، بدل المطابقة الحرفية الهشّة. */
-function matchShapeScore(pattern, ext, tdist) {
+/** تقييم متصل (0..1) لمدى مطابقة شكل اليد لنمط مثل EECCE، بمقياس المستخدم. */
+function matchShapeScore(pattern, extNorm, thumbNorm) {
   let sum = 0, n = 0;
   for (let i = 0; i < 5; i++) {
     const w = pattern[i];
     if (w === '?') continue;
-    const e = i === 0 ? smooth01(0.60, 0.80, tdist) : smooth01(0.64, 0.84, ext[i]);
-    sum += w === 'E' ? e : 1 - (i === 0 ? e : smooth01(0.54, 0.74, ext[i]));
+    if (i === 0) {
+      const e = smooth01(0.30, 0.72, thumbNorm);
+      sum += w === 'E' ? e : 1 - e;
+    } else {
+      const e = smooth01(0.35, 0.78, extNorm[i]);
+      sum += w === 'E' ? e : 1 - smooth01(0.20, 0.55, extNorm[i]);
+    }
     n++;
   }
   return n ? sum / n : 0;
@@ -341,14 +383,15 @@ function matchShapeScore(pattern, ext, tdist) {
 export function detectBuiltinShape(p, extIn, tdistIn) {
   const ext = extIn || fingerExtension(p);
   const tdist = tdistIn == null ? thumbGap(p) : tdistIn;
+  const ne = [0, 1, 2, 3, 4].map((i) => (i === 0 ? normThumb(tdist) : normExt(ext[i], i)));
   // دائرة O: طرف الإبهام يلامس طرف السبابة والباقي مفرود (السبابة تكون منحنية فلا نشترط استقامتها)
   const pinch = Math.hypot(p[12] - p[24], p[13] - p[25], p[14] - p[26]);
-  if (pinch < 0.34 && ext[2] > 0.70 && ext[3] > 0.70 && ext[4] > 0.70) return { id: 'shape_ok', name: 'دائرة O', conf: 0.95 };
+  if (pinch < 0.34 && ne[2] > 0.55 && ne[3] > 0.55 && ne[4] > 0.55) return { id: 'shape_ok', name: 'دائرة O', conf: 0.95 };
 
   let best = null;
   const scores = [];
   for (const s of BUILTIN_SHAPES) {
-    const score = matchShapeScore(s.pattern, ext, tdist);
+    const score = matchShapeScore(s.pattern, ne, ne[0]);
     scores.push({ s, score });
     if (!best || score > best.score) best = { id: s.id, name: s.name, score };
   }

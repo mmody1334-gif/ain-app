@@ -1,7 +1,8 @@
 // اسمع: كلام السامع (ميكروفون أو كتابة) ← نص ← إشارات مرسومة بيدٍ ثلاثية الأبعاد من نفس النقاط المسجَّلة.
 import { h, btn, icon, toast, sleep } from '../ui.js';
 import { HandView, animOf } from '../hand3d.js';
-import { matchSentence } from '../arabic.js';
+import { matchSentence, normalizeAr } from '../arabic.js';
+import { ARABIC_RE } from '../alphabet.js';
 import { describePose, describeMotion } from '../learn.js';
 
 export function createListenView(app) {
@@ -13,13 +14,27 @@ export function createListenView(app) {
     return { line: g('--ink', '#222'), grid: g('--line', '#ccc'), glow: g('--accent-soft', '#e4e2fb'), trail: g('--accent', '#4640d4'), ok: g('--ok', '#14925f'), bad: g('--bad', '#cf3f27') };
   }
 
+  /** حروف الكلمة غير المعروفة: نبحث عن إشارة كل حرف في القاموس لتهجئتها. */
+  function spellOf(text) {
+    const out = [];
+    for (const ch of String(text || '')) if (ARABIC_RE.test(ch)) out.push({ ch, sign: app.index.map.get(normalizeAr(ch)) || null });
+    return out;
+  }
+  const hasSpell = (it) => !!it.sign || !!(it.letters && it.letters.some((l) => l.sign));
+
   function renderChips() {
     chipsEl.innerHTML = '';
     if (!items.length) { chipsEl.append(h('span.muted.small', 'اكتب جملة أو اضغط على الميكروفون وتكلّم…')); return; }
     items.forEach((it, i) => {
       const c = h('span.word' + (it.sign ? '' : '.unknown'), { dataset: { i } }, it.text);
       if (it.sign) c.onclick = () => playFrom(i);
-      else c.append(h('button.btn.sm', { style: { marginInlineStart: '8px', padding: '0 8px', minHeight: '26px' }, title: 'أضف إشارة لهذه الكلمة', onclick: (ev) => { ev.stopPropagation(); app.pendingNew = { word: it.text }; app.go('dict'); } }, '+'));
+      else {
+        if (it.letters && it.letters.some((l) => l.sign)) {
+          c.onclick = () => playFrom(i);
+          c.append(h('small.spell', 'تهجئة'));
+        }
+        c.append(h('button.btn.sm', { style: { marginInlineStart: '8px', padding: '0 8px', minHeight: '26px' }, title: 'أضف إشارة لهذه الكلمة', onclick: (ev) => { ev.stopPropagation(); app.pendingNew = { word: it.text }; app.go('dict'); } }, '+'));
+      }
       chipsEl.append(c);
     });
   }
@@ -28,14 +43,25 @@ export function createListenView(app) {
 
   function setItems(text) {
     stop();
-    items = matchSentence(text, app.index);
+    items = matchSentence(text, app.index).map((it) => (it.sign ? it : { ...it, letters: spellOf(it.text) }));
     renderChips();
-    const known = items.filter((x) => x.sign).length;
+    const known = items.filter(hasSpell).length;
     if (items.length && !known) toast('لا توجد إشارات لهذه الكلمات في قاموسك بعد', 'bad');
-    else if (known) playFrom(items.findIndex((x) => x.sign));
+    else if (known) playFrom(items.findIndex(hasSpell));
   }
 
   function stop() { token++; playing = false; view.stop(); capEl.textContent = ''; mark(-1); playBtn.firstChild && (playBtn.replaceChildren(icon('play'), h('span', 'شغّل'))); }
+
+  async function playOne(sign, label) {
+    capEl.textContent = label;
+    const anim = animOf(sign);
+    desc.textContent = sign.kind === 'motion' ? describeMotion(sign) : (sign.ref ? describePose(Float32Array.from(sign.ref)) : '');
+    if (anim) {
+      if (anim.frames.length > 1) view.play(anim, { speed });
+      else view.setPose(anim.frames[0].p, anim.frames[0].off);
+      await sleep(((anim.frames.length > 1 ? (anim.dur || 1) + 0.8 : 1.25) * 1000) / speed);
+    } else await sleep(600);
+  }
 
   async function playFrom(start = 0) {
     const my = ++token; playing = true;
@@ -43,15 +69,15 @@ export function createListenView(app) {
     for (let i = start; i < items.length; i++) {
       if (my !== token) return;
       const it = items[i];
-      if (!it.sign) { mark(i); capEl.textContent = it.text + ' — لا إشارة'; await sleep(500); continue; }
-      mark(i); capEl.textContent = it.sign.word;
-      const anim = animOf(it.sign);
-      desc.textContent = it.sign.kind === 'motion' ? describeMotion(it.sign) : (it.sign.ref ? describePose(Float32Array.from(it.sign.ref)) : '');
-      if (anim) {
-        if (anim.frames.length > 1) view.play(anim, { speed });
-        else view.setPose(anim.frames[0].p, anim.frames[0].off);
-        await sleep(((anim.frames.length > 1 ? (anim.dur || 1) + 0.8 : 1.25) * 1000) / speed);
-      } else await sleep(700);
+      mark(i);
+      if (it.sign) { await playOne(it.sign, it.sign.word); continue; }
+      const letters = it.letters || [];
+      if (!letters.some((l) => l.sign)) { capEl.textContent = it.text + ' — لا إشارة'; await sleep(450); continue; }
+      for (const L of letters) {
+        if (my !== token) return;
+        if (!L.sign) { capEl.textContent = L.ch + ' —'; await sleep(260); continue; }
+        await playOne(L.sign, L.ch);
+      }
     }
     if (my === token) { playing = false; playBtn.replaceChildren(icon('play'), h('span', 'أعد')); capEl.textContent = ''; mark(-1); }
   }

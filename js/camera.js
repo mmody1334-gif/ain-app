@@ -77,7 +77,10 @@ export class CameraHub {
     this._mockT = 0;
     this.pref = 'cpu';
     this._gen = 0; this._frameReady = true; this._lastDetect = 0; this._switching = false;
-    this.diag = { backend: '', frames: 0, hands: 0, errors: 0, lastError: '', rvfc: false, video: '' };
+    this.light = null; this._lightT = 0;
+    this._lc = document.createElement('canvas'); this._lc.width = 32; this._lc.height = 32;
+    this._lctx = this._lc.getContext('2d', { willReadFrequently: true });
+    this.diag = { backend: '', frames: 0, hands: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
   }
 
   onFrame(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -89,7 +92,7 @@ export class CameraHub {
     this.facing = facing; this.status = 'loading'; this.error = null;
     try {
       if (!this.detector) this.detector = await loadDetector(onStatus, this.pref);
-      this.diag = { backend: this.detector.backend, frames: 0, hands: 0, errors: 0, lastError: '', rvfc: false, video: '' };
+      this.diag = { backend: this.detector.backend, frames: 0, hands: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
       if (!this.detector.mock) {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('no-camera-api');
         onStatus('تشغيل الكاميرا…');
@@ -170,6 +173,18 @@ export class CameraHub {
       this.lastOut = out;
       this._frames++;
       if (now - this._fpsT > 1000) { this.fps = this._frames * 1000 / (now - this._fpsT); this._frames = 0; this._fpsT = now; }
+      // إضاءة تقريبية كل 0.8 ثانية: تكفي لمؤشر «أضئ المكان» بلا تكلفة كبيرة
+      if (!this.detector.mock && now - this._lightT > 800 && this.video.readyState >= 2) {
+        this._lightT = now;
+        try {
+          this._lctx.drawImage(this.video, 0, 0, 32, 32);
+          const d = this._lctx.getImageData(0, 0, 32, 32).data;
+          let sum = 0;
+          for (let i = 0; i < d.length; i += 4) sum += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          this.light = sum / (d.length / 4);
+          this.diag.light = Math.round(this.light);
+        } catch (e) { /* لا شيء */ }
+      }
       this._draw(lm, out);
       for (const fn of this.listeners) { try { fn(out, lm, t); } catch (e) { console.error(e); } }
       requestAnimationFrame(step);

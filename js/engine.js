@@ -3,7 +3,7 @@
 
 import { SignClassifier } from './classifier.js';
 import { HandTracker, MotionSegmenter, MotionBank, segmentToSeq, detectBuiltinMotion, detectBuiltinShape, fingerStates } from './motion.js';
-import { POSE_LEN, mirrorPose } from './features.js';
+import { POSE_LEN, FEATURE_LEN, mirrorPose } from './features.js';
 
 /** نموذج الإشارة المخزَّنة:
  *  { id, word, aliases?, kind:'static'|'motion'|'builtin', rule?, samples?, takes?, ref?, anim?, source, created }
@@ -48,8 +48,8 @@ export class Engine {
     for (const s of this.signs) { this.byId.set(s.id, s); if (s.kind === 'builtin' && s.rule) this.byRule.set(s.rule, s); }
   }
 
-  /** يحدّث قائمة الإشارات ويُعيد بناء النموذج. */
-  async setSigns(signs, onProgress) {
+  /** يحدّث قائمة الإشارات ويُعيد بناء النموذج. cached = نموذج محفوظ صالح لنفس البيانات. */
+  async setSigns(signs, onProgress, cached = null) {
     this.refreshMaps(signs);
 
     const statics = this.signs.filter((s) => s.kind === 'static' && s.samples && s.samples.length >= 8);
@@ -71,9 +71,30 @@ export class Engine {
       this.sig.set(g.label, cnt.map((c) => (c.C / n <= 0.03 && c.E / n >= 0.8 ? 'E' : c.E / n <= 0.03 && c.C / n >= 0.8 ? 'C' : null)));
     }
     if (data.length >= 1) {
-      // «none» غير مطلوبة: يُرفض أي شيء بعيد عن العيّنات بحدّ أقرب جار
-      this.clf = await SignClassifier.train(data, { epochs: data.length > 6 ? 50 : 40, onProgress });
-    }
+      // نموذج مخزَّن صالح لنفس الإشارات: نستعيده بدل إعادة التدريب (يفتح التطبيق فوراً)
+      let loaded = false;
+      const sameLabels = cached && Array.isArray(cached.classes) && cached.classes.length === data.length &&
+        cached.classes.every((c, i) => c === data[i].label);
+      if (cached && sameLabels && cached.D === FEATURE_LEN) {
+        try {
+          this.clf = SignClassifier.fromJSON(cached);
+          this.clf.attachReference(data);
+          loaded = true;
+          onProgress?.(1);
+        } catch (e) { this.clf = null; }
+      }
+      if (!loaded) {
+        // «none» غير مطلوبة: يُرفض أي شيء بعيد عن العيّنات بحدّ أقرب جار
+        const many = data.length > 12;
+        this.clf = await SignClassifier.train(data, {
+          epochs: many ? 32 : data.length > 6 ? 50 : 40,
+          hidden: many ? 64 : 48,
+          perClass: many ? 90 : 110,
+          onProgress,
+        });
+      }
+      this.trainInfo = loaded ? 'cache' : 'trained';
+    } else this.trainInfo = 'empty';
     this.bank = new MotionBank();
     for (const s of this.signs) if (s.kind === 'motion' && s.takes && s.takes.length >= 2) this.bank.setSign(s.id, s.takes);
     this.ready = true;
