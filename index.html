@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4640d4">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>عين</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Reem+Kufi:wght@500;700&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand">
+      <img src="icons/logo.svg" alt="" width="36" height="36">
+      <div><h1>عين</h1><small>ترى الإشارة وتحكي، وتسمع وتُري</small></div>
+    </div>
+    <span class="chip-status" id="status-chip">جارٍ التحميل…</span>
+    <button class="iconbtn" id="btn-settings" aria-label="الإعدادات"></button>
+  </header>
+
+  <main id="main">
+    <section class="view" id="view-translate"></section>
+    <section class="view" id="view-listen"></section>
+    <section class="view" id="view-learn"></section>
+    <section class="view" id="view-dict"></section>
+    <section class="view" id="view-commands"></section>
+  </main>
+
+  <nav class="tabs" id="tabs" role="tablist" aria-label="الأقسام"></nav>
+</div>
+
+<!-- مسرح الكاميرا الواحد: يُنقل بين الأقسام بدل فتح الكاميرا أكثر من مرة -->
+<div class="stage" id="stage" hidden>
+  <video playsinline muted autoplay></video>
+  <canvas class="overlay"></canvas>
+  <div class="holdbar"><i></i></div>
+  <div class="tools"></div>
+  <div class="hud"><span class="pill dim" data-hud="left"></span><span class="pill big" data-hud="word" hidden></span></div>
+  <div class="center" data-hud="center"></div>
+  <div class="shade" data-hud="shade">
+    <h2>الكاميرا مغلقة</h2>
+    <p>تعمل المعالجة كلها داخل هاتفك. لا يُرسَل أي فيديو إلى أي مكان.</p>
+    <button class="btn primary" data-act="start-cam">تشغيل الكاميرا</button>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
