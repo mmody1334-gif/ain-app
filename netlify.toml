@@ -1,0 +1,9 @@
+# موقع عين ثابت بالكامل: لا يوجد أمر بناء، ومجلد النشر هو جذر المستودع.
+[build]
+  publish = "."
+
+# ملفات Service Worker لا تُخزَّن طويلاً حتى تصل التحديثات.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
