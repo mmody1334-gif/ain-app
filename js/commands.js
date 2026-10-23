@@ -32,7 +32,7 @@ export const PHRASE_PRESETS = [
 
 export const DEFAULT_COMMANDS = {
   phrases: [],
-  sos: { enabled: false, key: null, phone: '', message: 'أحتاج مساعدة عاجلة. أنا أصمّ ولا أستطيع الكلام.', location: true, countdown: 5 },
+  sos: { enabled: false, key: null, phone: '', message: 'أحتاج مساعدة عاجلة. أنا أصمّ ولا أستطيع الكلام.', location: true, countdown: 5, bubble: true },
   pc: {
     armKey: 'builtin:shape_victory', armSeconds: 25, cooldown: 1.2, alwaysArm: false,
     bindings: [

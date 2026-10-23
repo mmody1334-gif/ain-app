@@ -4,9 +4,31 @@ import { buildPcConfig } from '../pcexport.js';
 import { ACTIONS, PHRASE_PRESETS, mergeCommands, gestureLabel, gestureOptions, ArmState, Siren, buildSosLinks } from '../commands.js';
 
 export function createCommandsView(app) {
-  let root, slot, cfg, off = null, lastEl, armEl, phrasesEl, sosBox, pcBox, simEl, arm, slide = 1, siren = new Siren(), sosTimer = 0, sosOverlay = null, lastPos = null, tickTimer = 0;
+  let root, slot, cfg, off = null, lastEl, armEl, phrasesEl, sosBox, pcBox, simEl, arm, slide = 1, siren = new Siren(), sosTimer = 0, sosOverlay = null, lastPos = null, tickTimer = 0, fab = null;
 
   const save = () => app.store.setMeta('commands', cfg);
+
+  // ---------- فقاعة الطوارئ (تعمل بلا كاميرا) ----------
+  function applyFab() {
+    if (!fab) return;
+    const want = cfg ? cfg.sos.bubble !== false : true;
+    fab.hidden = !want || !!sosOverlay;
+  }
+
+  function buildFab() {
+    if (fab) return;
+    fab = h('button.sos-fab', {
+      'aria-label': 'طوارئ — اضغط لبدء النداء',
+      title: 'طوارئ: إنذار ورسالة جاهزة، بلا كاميرا',
+      onclick: async () => {
+        if (sosOverlay) return;
+        if (!cfg) cfg = mergeCommands(await app.store.getMeta('commands', null));   // إن لم يُفتح قسم «أوامر» قط
+        siren.prime();
+        startSos(false);
+      },
+    }, icon('warn'));
+    document.body.append(fab);
+  }
 
   // ---------- مستمع الأحداث ----------
   function onFrame(out) {
@@ -60,6 +82,7 @@ export function createCommandsView(app) {
     sosBox.innerHTML = '';
     const s = cfg.sos;
     const en = h('input', { type: 'checkbox', checked: s.enabled, onchange: (e) => { s.enabled = e.target.checked; siren.prime(); if (s.enabled && s.location) askLocation(); save(); } });
+    const fabSw = h('input', { type: 'checkbox', checked: s.bubble !== false, onchange: (e) => { s.bubble = e.target.checked; save(); applyFab(); } });
     const gSel = h('select', h('option', { value: '' }, 'اختر إيماءة'), gestureOptions(app).map((o) => h('option', { value: o.key, selected: o.key === s.key }, o.label)));
     gSel.onchange = () => { s.key = gSel.value || null; save(); };
     const phone = h('input', { type: 'tel', value: s.phone, placeholder: 'رقم شخص تثق به (اختياري)', dir: 'ltr', oninput: (e) => { s.phone = e.target.value; save(); } });
@@ -67,11 +90,12 @@ export function createCommandsView(app) {
     const loc = h('input', { type: 'checkbox', checked: s.location, onchange: (e) => { s.location = e.target.checked; if (s.location) askLocation(); save(); } });
     sosBox.append(
       h('label.switch', h('span', 'تفعيل الطوارئ'), en),
+      h('label.switch', h('span', 'فقاعة طوارئ عائمة دائمة على الشاشة (تعمل بلا كاميرا، بضغطة واحدة)'), fabSw),
       h('label.field', h('span', 'إيماءة الطوارئ (اختر شيئاً لا تفعله عن غير قصد)'), gSel),
       h('label.field', h('span', 'رقم للاتصال/الرسالة'), phone),
       h('label.field', h('span', 'نص الرسالة'), msg),
       h('label.switch', h('span', 'أرفق موقعي'), loc),
-      h('p.small.muted', 'عند الإيماءة: عدّ تنازلي 5 ثوانٍ يمكنك إلغاؤه، ثم صفّارة عالية ووميض واهتزاز وجملة منطوقة وأزرار اتصال/رسالة جاهزة. المتصفح لا يسمح بإرسال رسالة أو إجراء مكالمة تلقائياً، فتحتاج ضغطة واحدة. تعمل فقط والتطبيق مفتوح والكاميرا شغّالة.'),
+      h('p.small.muted', 'عند الإيماءة أو الضغط على الفقاعة: عدّ تنازلي 5 ثوانٍ يمكنك إلغاؤه، ثم صفّارة عالية ووميض واهتزاز وجملة منطوقة وأزرار اتصال/رسالة جاهزة. الفقاعة تعمل حتى والكاميرا مغلقة. المتصفح لا يسمح بإرسال رسالة أو إجراء مكالمة تلقائياً، فتحتاج ضغطة واحدة. الإيماءة تعمل فقط والتطبيق مفتوح والكاميرا شغّالة.'),
       btn('جرّب الطوارئ الآن', { cls: 'danger', ic: 'warn', onclick: () => { siren.prime(); startSos(true); } }));
   }
 
@@ -83,6 +107,7 @@ export function createCommandsView(app) {
   function startSos(test = false) {
     if (sosOverlay) return;
     siren.prime();
+    if (fab) fab.hidden = true;    // لا تشغّل الفقاعة أثناء الإنذار
     if (cfg.sos.location) askLocation();
     let n = cfg.sos.countdown || 5;
     const title = h('h1', 'طوارئ');
@@ -106,7 +131,7 @@ export function createCommandsView(app) {
     title.textContent = test ? 'تجربة طوارئ' : 'أحتاج مساعدة!';
     const links = buildSosLinks(cfg.sos, lastPos);
     sub.textContent = links.msg;
-    if (!test) siren.start(); else siren.start();
+    if (!test) siren.start();
     app.say(cfg.sos.message, { rate: 0.9 });
     const vib = setInterval(() => navigator.vibrate?.([400, 200, 400]), 1200);
     const say = setInterval(() => app.say(cfg.sos.message, { rate: 0.9 }), 7000);
@@ -127,6 +152,7 @@ export function createCommandsView(app) {
     sosOverlay?.remove(); sosOverlay = null;
     navigator.vibrate?.(0);
     app.tts.cancel();
+    applyFab();
   }
 
   // ---------- التحكم بالحاسوب ----------
@@ -218,6 +244,9 @@ export function createCommandsView(app) {
       phrasesEl = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } });
       sosBox = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } });
       pcBox = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } });
+      buildFab();
+      // تحضير إعدادات الأوامر مبكراً كي تعمل فقاعة الطوارئ حتى قبل فتح القسم
+      app.store.getMeta('commands', null).then((c) => { if (!cfg) { cfg = mergeCommands(c); applyFab(); } });
       root.append(
         h('div.card', h('h2', 'أوامر بالإيماءات'), h('p.sub', 'اجعل إيماءة تنطق جملة، أو تستدعي النجدة، أو تقلّب شرائح العرض على الحاسوب.')),
         slot, h('div.row', lastEl),
@@ -228,6 +257,7 @@ export function createCommandsView(app) {
     async show() {
       cfg = mergeCommands(await app.store.getMeta('commands', null));
       arm = new ArmState(cfg.pc);
+      applyFab();
       app.mountStage(slot);
       off?.(); off = app.cam.onFrame(onFrame);
       renderPhrases(); renderSos(); renderPc();

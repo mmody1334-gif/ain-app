@@ -104,6 +104,9 @@ class App {
     this.cam.pref = this.settings.detector;
     this.buildStage();
     this.buildTabs();
+    // بناء قسم «أوامر» مسبقاً حتى تكون فقاعة الطوارئ العائمة (SOS بلا كاميرا) جاهزة من أول لحظة
+    const vc = this.views.commands;
+    if (vc && !vc.built) { vc.api = vc.def.make(this); vc.api.mount(vc.root); vc.built = true; }
     document.getElementById('btn-settings').append(icon('gear'));
     document.getElementById('btn-settings').onclick = () => this.openSettings();
 
