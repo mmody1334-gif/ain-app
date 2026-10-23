@@ -138,7 +138,7 @@ export function createLearnView(app) {
     sheet('تمرين الأبجدية المتسلسل', (close) => {
       const inp = h('input', { type: 'text', placeholder: 'اكتب كلمة أو اسمًا', enterKeyHint: 'go' });
       const p = letterProgress(app.signs);
-      const presets = h('div.row', { style: { gap: '6px' } }, ['أهلا', 'سمير', 'عين'].map((w) => h('button.btn.sm', { type: 'button', onclick: () => { inp.value = w; } }, w)));
+      const presets = h('div.row', { style: { gap: '6px' } }, ['أهلا', 'سمير', 'حذيفة'].map((w) => h('button.btn.sm', { type: 'button', onclick: () => { inp.value = w; } }, w)));
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px' } },
         h('p.small.muted', `تُنفَّذ الكلمة حرفاً حرفاً بإشاراتك المسجّلة. سجّلت ${p.done} من ${p.total} حرفاً؛ الحروف غير المسجّلة تُخطى وتظهر بولّون فاتح.`),
         inp, presets,

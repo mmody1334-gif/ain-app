@@ -660,7 +660,7 @@ def main():
             cv2.putText(view, last_msg, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
         if keys.dry_run:
             cv2.putText(view, 'DRY RUN', (w - 130, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 80, 255), 2)
-        cv2.imshow('Ain', view)
+        cv2.imshow('Hudhaifa', view)
         k = cv2.waitKey(1) & 0xFF
         if k in (ord('q'), 27):
             break

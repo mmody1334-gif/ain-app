@@ -198,6 +198,34 @@ export function createCommandsView(app) {
       ];
       arm.setConfig(pc); save(); renderPc(); toast('تم الضبط: يسار = التالي، يمين = السابق', 'ok');
     };
+    // بطاقة التثبيت خطوة بخطوة (تُبنى منفصلةً لسهولة القراءة)
+    const detailRow = (label, href) => h('a.btn.ghost.sm', { href, download: href.startsWith('http') ? undefined : href.split('/').pop(), target: href.startsWith('http') ? '_blank' : null, rel: 'noopener' }, icon('download'), h('span', label));
+    const stepsCard = h('details', { open: true }, h('summary', 'تثبيت برنامج الحاسوب خطوة بخطوة'),
+      h('ol.small', { style: { paddingInlineStart: '20px', lineHeight: '1.9' } },
+        h('li', 'ثبّت Python 3.10–3.12 من python.org، وفعّل خيار «Add Python to PATH» أثناء التثبيت.'),
+        h('li', 'نزّل ثلاثة ملفات وضعها في مجلد واحد: ', h('b', 'ain_pc_controller.py'), '، و', h('b', 'control_config.json'), ' من زر «صدّر إعداد الحاسوب»، و', h('b', 'hand_landmarker.task'), ' من الرابط أدناه.'),
+        h('li', 'افتح Terminal أو CMD في المجلد، ونفّذ مرة واحدة: ', h('span.kbd', 'py -m pip install opencv-python mediapipe numpy')),
+        h('li', 'أو استعمل ', h('b', 'run_windows.bat'), ' — يثبّت المكتبات ويشغّل البرنامج بضغطة واحدة.')),
+      h('p.small.muted', 'إذا لم تظهر الكاميرا فأغلق أي برنامج آخر يستخدمها. وإذا فشل تثبيت mediapipe فاستخدم Python 3.11.'),
+      h('div.row',
+        detailRow('تحميل Python', 'https://www.python.org/downloads/'),
+        detailRow('نموذج اليد', 'vendor/hand_landmarker.task'),
+        detailRow('برنامج التحكم', 'pc/ain_pc_controller.py')));
+    // بطاقة يوم اللجنة: عرض جاهز يُدار بالإيماءات
+    const demoRow = h('div.row',
+      h('a.btn.primary', { href: 'demo/hudhaifa_demo.pptx', download: 'hudhaifa_demo.pptx', style: { textDecoration: 'none' } }, icon('download'), h('span', 'نزّل عرض اللجنة التجريبي')),
+      h('a.btn.ghost', { href: 'pc/run_windows.bat', download: 'run_windows.bat', style: { textDecoration: 'none' } }, icon('download'), h('span', 'تشغيل بضغطة')),
+      h('a.btn.ghost', { href: 'pc/requirements.txt', download: 'requirements.txt', style: { textDecoration: 'none' } }, icon('download'), h('span', 'المتطلبات')));
+    const committeeCard = h('div.card', h('h2', 'يوم اللجنة'),
+      h('p.small.muted', 'عرض تقديمي جاهز مبني لهذا المشروع — شريحة «جرّبها معنا الآن» تدعو أستاذك أن يلوّح كفه، فتتجاوب الشرائح مع يده بلا لمس.'),
+      demoRow,
+      h('ol.small', { style: { paddingInlineStart: '20px', lineHeight: '1.9' } },
+        h('li', 'قبل اليوم: نزّل ', h('b', 'عرض اللجنة التجريبي'), ' وافتحه في PowerPoint للتأكد. شريحة «جرّبها معنا الآن» هي الشريحة الخامسة.'),
+        h('li', 'صدّر ', h('b', 'إعداد الحاسوب'), ' (الزر أعلاه) وضعه في مجلد واحد مع ', h('b', 'run_windows.bat'), ' و', h('b', 'ain_pc_controller.py'), ' و', h('b', 'hand_landmarker.task'), '.'),
+        h('li', 'نزّل Python إن لم يكن مثبتاً، ثم اضغط ', h('b', 'تشغيل بضغطة'), ' — أول ضغطة تثبّت المكتبات وحدها.'),
+        h('li', 'فعّل «التحكم مفعّل دائماً» أعلى هذا القسم، واضغط F5 في PowerPoint.'),
+        h('li', 'قف أمام كاميرا الحاسوب: لوِّح لليسار للشريحة التالية ولليمين للسابقة — تتحكم في العرض الحي وأنت واقف بعيداً عن الكمبيوتر.'),
+        h('li', 'لحظة الإبهار الثانية: افتح التطبيق على الهاتف، واضغط فقاعة الطوارئ الحمراء العائمة — صفّارة ورسالة جاهزة أمام الجميع.')));
     pcBox.append(
       h('p.small.muted', 'تشغّل برنامجاً صغيراً على الحاسوب (بكاميرته) فيضغط الأزرار عند إيماءاتك: تلويح اليد في الهواء لليسار = الشريحة التالية في PowerPoint، ولليمين = الشريحة السابقة، مع تحكم بالفيديو والصوت. جرّب الإيماءات هنا أولاً.'),
       h('label.switch', h('span', 'التحكم مفعّل دائماً (بلا إيماءة تسليح — أخطر على الأخطاء العشوائية)'), always),
@@ -211,19 +239,8 @@ export function createCommandsView(app) {
       btn('أضف أمراً', { cls: 'ghost', ic: 'plus', onclick: () => { pc.bindings.push({ key: opts[0].key, action: 'right' }); save(); renderPc(); } }),
       simEl,
       h('div.row', btn('صدّر إعداد الحاسوب', { cls: 'primary', ic: 'download', onclick: exportPc }), h('a.btn.ghost', { href: 'pc/ain_pc_controller.py', download: 'ain_pc_controller.py' }, icon('download'), h('span', 'برنامج الحاسوب'))),
-      h('details', { open: true }, h('summary', 'تثبيت برنامج الحاسوب خطوة بخطوة'),
-        h('ol.small', { style: { paddingInlineStart: '20px', lineHeight: '1.9' } },
-          h('li', 'ثبّت Python 3.10–3.12 من python.org، وفعّل خيار «Add Python to PATH» أثناء التثبيت.'),
-          h('li', 'نزّل ثلاثة ملفات وضعها في مجلد واحد: ', h('b', 'ain_pc_controller.py'), '، و', h('b', 'control_config.json'), ' من زر «صدّر إعداد الحاسوب»، و', h('b', 'hand_landmarker.task'), ' من الرابط أدناه.'),
-          h('li', 'افتح Terminal أو CMD في المجلد، ونفّذ مرة واحدة: ', h('span.kbd', 'py -m pip install opencv-python mediapipe numpy')),
-          h('li', 'شغّل: ', h('span.kbd', 'py ain_pc_controller.py'), ' واسمح للبرنامج باستخدام الكاميرا.'),
-          h('li', 'افتح PowerPoint، اعرض إيماءة التسليح (حرف V افتراضياً) ثانيتين — أو فعّل «التحكم مفعّل دائماً» في التطبيق — ثم حرّك يدك لليسار (تلويح) للشريحة التالية ولليمين للسابقة.'),
-          h('li', 'اضغط ', h('span.kbd', 'Q'), ' لإيقاف البرنامج.')),
-        h('p.small.muted', 'إذا لم تظهر الكاميرا فأغلق أي برنامج آخر يستخدمها. وإذا فشل تثبيت mediapipe فاستخدم Python 3.11.'),
-        h('div.row',
-          h('a.btn.ghost.sm', { href: 'https://www.python.org/downloads/', target: '_blank', rel: 'noopener' }, icon('download'), h('span', 'تحميل Python')),
-          h('a.btn.ghost.sm', { href: 'vendor/hand_landmarker.task', download: 'hand_landmarker.task' }, icon('download'), h('span', 'نموذج اليد')),
-          h('a.btn.ghost.sm', { href: 'pc/ain_pc_controller.py', download: 'ain_pc_controller.py' }, icon('download'), h('span', 'برنامج التحكم'))))
+      stepsCard,
+      committeeCard,
     );
     renderArm();
   }

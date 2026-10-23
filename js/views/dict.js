@@ -403,7 +403,7 @@ export function createDictView(app) {
     const payload = { format: 'signbridge', version: 1, exported: new Date().toISOString(), signs: app.signs.map((s) => ({ ...s })) };
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const file = new File([blob], 'ain-dictionary.json', { type: 'application/json' });
-    if (navigator.canShare?.({ files: [file] })) { navigator.share({ files: [file], title: 'قاموس عين' }).catch(() => {}); return; }
+    if (navigator.canShare?.({ files: [file] })) { navigator.share({ files: [file], title: 'قاموس حذيفة' }).catch(() => {}); return; }
     const a = h('a', { href: URL.createObjectURL(blob), download: 'ain-dictionary.json' });
     document.body.append(a); a.click(); a.remove();
     toast('تم تنزيل الملف', 'ok');

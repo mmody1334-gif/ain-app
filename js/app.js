@@ -1,4 +1,4 @@
-// عين — نقطة البداية: الخدمات المشتركة، التنقّل، مسرح الكاميرا، الإعدادات.
+// حذيفة — نقطة البداية: الخدمات المشتركة، التنقّل، مسرح الكاميرا، الإعدادات.
 
 import { h, icon, btn, toast, sheet } from './ui.js';
 import { Store } from './store.js';
@@ -462,7 +462,7 @@ class App {
         rebuildVoices();
         this.say(baseLang() === 'ar' ? 'مرحبًا' : 'Hello');
       };
-      voiceSel.onchange = (e) => this.say(baseLang() === 'ar' ? 'مرحبًا أنا عين، سأصدّ ما تقوله' : 'Hello, I am AIN', { voiceURI: e.target.value });
+      voiceSel.onchange = (e) => this.say(baseLang() === 'ar' ? 'مرحبًا أنا حذيفة، سأصدّ ما تقوله' : 'Hello, I am Hudhaifa', { voiceURI: e.target.value });
       const speakEach = h('input', { type: 'checkbox', checked: s.speakEach, onchange: (e) => this.saveSettings({ speakEach: e.target.checked }) });
       const skel = h('input', { type: 'checkbox', checked: s.skeleton, onchange: (e) => this.saveSettings({ skeleton: e.target.checked }) });
       const theme = h('div.seg', ['auto', 'light', 'dark'].map((v) => h('button', { type: 'button', 'aria-pressed': String(s.theme === v), onclick: (e) => { this.saveSettings({ theme: v }); theme.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } }, { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' }[v])));
@@ -476,7 +476,7 @@ class App {
       const dg = this.cam.diag || {};
       const diagText = `engine=${dg.backend || '-'} video=${dg.video || '-'} frames=${dg.frames || 0} hands=${dg.hands || 0} pose=${dg.pose || 0} errors=${dg.errors || 0} rvfc=${dg.rvfc ? 1 : 0}${dg.lastError ? ' last=' + dg.lastError : ''}`;
       const voiceInfo = tts.supported ? (tts.hasArabic ? 'صوت عربي فصيح متوفر على جهازك.' : 'لا يوجد صوت عربي مثبّت في جهازك؛ ثبّت صوتاً عربياً (فصحى) من إعدادات النظام.') : 'النطق غير مدعوم في هذا المتصفح.';
-      const testBtn = btn('جرّب الصوت', { ic: 'speaker', cls: 'sm', onclick: () => this.say('مرحبًا، أنا عين') });
+      const testBtn = btn('جرّب الصوت', { ic: 'speaker', cls: 'sm', onclick: () => this.say('مرحبًا، أنا حذيفة') });
       rebuildLangs(); rebuildGender(); rebuildVoices();
       // الأصوات قد تتأخر عن فتح الإعدادات (خاصة على الجوال)؛ نُعيد البناء عند بلوغها
       tts.onVoicesChanged(() => { rebuildLangs(); rebuildVoices(); });      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },
