@@ -152,7 +152,7 @@ class Classifier:
 
 # ------------------------------------------------------------------ التتبّع والحركة
 class HandTracker:
-    def __init__(self, alpha=0.6):
+    def __init__(self, alpha=0.75):
         self.alpha = alpha
         self.prev = None
         self.last_seen = -1.0
@@ -179,7 +179,7 @@ class HandTracker:
             size = 0.5 * bsize + 0.5 * self.prev['size']
             dt = max(0.008, t - self.prev['t'])
             v = math.hypot(wiS[0] - self.prev['wi'][0], wiS[1] - self.prev['wi'][1]) / size / dt
-            self.speed = 0.5 * v + 0.5 * self.speed
+            self.speed = 0.7 * v + 0.3 * self.speed
         frame = {'t': t, 'p': p, 'wi': wiS, 'w': w, 'size': size, 'ext': finger_extension(p), 'speed': self.speed}
         self.prev = frame
         self.last_seen = t
@@ -187,7 +187,7 @@ class HandTracker:
 
 
 class MotionSegmenter:
-    def __init__(self, v_on=1.4, v_off=0.6, min_dur=0.25, max_dur=2.5, still=0.25, pre=0.15):
+    def __init__(self, v_on=1.4, v_off=0.6, min_dur=0.25, max_dur=2.5, still=0.15, pre=0.15):
         self.v_on, self.v_off, self.min_dur, self.max_dur, self.still, self.pre = v_on, v_off, min_dur, max_dur, still, pre
         self.reset()
 
@@ -614,6 +614,12 @@ def main():
         num_hands=1, min_hand_detection_confidence=0.5, min_hand_presence_confidence=0.5, min_tracking_confidence=0.5)
     landmarker = vision.HandLandmarker.create_from_options(opts)
     cap = cv2.VideoCapture(args.camera)
+    # تسريع: دقة 640×480 بدل دقة الكاميرا الكاملة (MediaPipe أسرع بكثير)،
+    # ومخزن إطار واحد فقط حتى لا تتراكم إطارات قديمة في الطابور وتتأخر الاستجابة ثوانٍ.
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     if not cap.isOpened():
         sys.exit('تعذّر فتح الكاميرا. أغلق أي برنامج آخر يستعملها أو جرّب --camera 1')
     print('يعمل. اعرض إيماءة التسليح لتفعيل التحكم. Q للخروج، R لقفل التحكم، D لتبديل وضع التجربة.')

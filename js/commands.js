@@ -34,7 +34,7 @@ export const DEFAULT_COMMANDS = {
   phrases: [],
   sos: { enabled: false, key: null, phone: '', message: 'أحتاج مساعدة عاجلة. أنا أصمّ ولا أستطيع الكلام.', location: true, countdown: 5, bubble: true },
   pc: {
-    armKey: 'builtin:shape_victory', armSeconds: 25, cooldown: 1.2, alwaysArm: false,
+    armKey: 'builtin:shape_victory', armSeconds: 25, cooldown: 0.8, alwaysArm: false,
     bindings: [
       // حرّك يدك لليسار = الشريحة التالية، ولليمين = السابقة
       { key: 'builtin:swipe_left', action: 'right' },
