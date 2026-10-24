@@ -22,5 +22,7 @@ export function builtinAnim(rule) {
   if (rule === 'no') return mk((u) => [0.45 * Math.sin(u * Math.PI * 4), 0], 1.0, point);
   if (rule === 'yes') return mk((u) => [0, 0.35 * Math.sin(u * Math.PI * 4)], 1.0, fist);
   if (rule === 'circle') return mk((u) => [0.6 * Math.cos(u * Math.PI * 2), 0.6 * Math.sin(u * Math.PI * 2)], 1.3);
+  if (rule === 'fist_circle') return mk((u) => [0.6 * Math.cos(u * Math.PI * 2), 0.6 * Math.sin(u * Math.PI * 2)], 1.3, fist);
+  if (rule === 'open_bounce') return mk((u) => [0, 0.35 * Math.sin(u * Math.PI * 4)], 1.0, open);
   return null;
 }

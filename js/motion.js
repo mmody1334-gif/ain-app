@@ -220,6 +220,8 @@ export const BUILTIN_MOTIONS = [
   { id: 'no',          name: 'هزّ السبابة (لا)',    hint: 'ارفع سبابتك فقط وحرّكها يميناً ويساراً مرتين' },
   { id: 'yes',         name: 'تحريك القبضة (نعم)',  hint: 'اقبض يدك وحرّكها للأعلى والأسفل مرتين' },
   { id: 'circle',      name: 'رسم دائرة',           hint: 'ارسم دائرة كاملة بكفّ مفتوح' },
+  { id: 'fist_circle', name: 'دائرة بقبضة',         hint: 'اقبض يدك وارسم بها دائرة كاملة — تختلف عن «رسم دائرة» لأن اليد مقبوضة لا مفتوحة' },
+  { id: 'open_bounce', name: 'كف مفتوحة تهتز عمودياً', hint: 'حرّك كفاً مفتوحة للأعلى والأسفل مرتين — تختلف عن «تحريك القبضة» لأن اليد مفتوحة لا مقبوضة' },
 ];
 
 function openFingers(frames) {
@@ -264,6 +266,12 @@ export function detectBuiltinMotion(seg) {
   const indexOnly = m[1] > 0.74 && m[2] < 0.62 && m[3] < 0.62 && m[4] < 0.62;
   const fist = m[1] < 0.62 && m[2] < 0.62 && m[3] < 0.62 && m[4] < 0.62;
 
+  // 0) دائرة بقبضة (جديدة: آسف): قبل «نعم» لأن الدائرة فيها أيضاً انعكاسات عمودية،
+  // وقبل فحص «الكف المفتوحة» لأن القبضة لا تجتازه أصلاً.
+  const circular = w > 0.6 && h > 0.6 && net < 0.45 * L && seg.dur >= 0.6 && polygonArea(pts) / Math.max(1e-6, L * L) > 0.035;
+  if (fist && circular) {
+    return { id: 'fist_circle', strength: polygonArea(pts) / (L * L) };
+  }
   // 1) هزّ السبابة: لا
   if (indexOnly && seg.dur >= 0.45 && seg.dur <= 2.2 && reversals(pts.map((p) => p[0]), 0.3) >= 2 && net < 0.9 * L) {
     return { id: 'no', strength: net };
@@ -279,8 +287,13 @@ export function detectBuiltinMotion(seg) {
     return { id: 'wave', strength: net };
   }
   // 4) دائرة: مسار منحنٍ يغطي محورين ويعود قريباً من بدايته
-  if (w > 0.6 && h > 0.6 && net < 0.45 * L && seg.dur >= 0.6 && polygonArea(pts) / Math.max(1e-6, L * L) > 0.035) {
+  if (circular) {
     return { id: 'circle', strength: polygonArea(pts) / (L * L) };
+  }
+  // 4ب) كف مفتوحة تهتز عمودياً (جديدة: سعيد): انعكاسات عمودية بلا انعكاسات أفقية
+  // كافية للتلويح، ومسارها ليس مستقيماً فلا يسرقها التمرير.
+  if (seg.dur >= 0.45 && seg.dur <= 2.2 && reversals(pts.map((p) => p[1]), 0.25) >= 2 && reversals(pts.map((p) => p[0]), 0.8) < 2 && net < 0.9 * L) {
+    return { id: 'open_bounce', strength: net };
   }
   const straight = net / Math.max(1e-6, L);
   if (straight < 0.65 || seg.dur > 1.3) return null;

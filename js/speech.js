@@ -6,6 +6,9 @@
 const synth = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null;
 let voices = [];
 let voicesAt = 0;
+let lastSpoken = { text: '', at: 0 };
+const voiceCbs = new Set();
+let voiceListenerAdded = false;
 
 function loadVoices() {
   if (!synth) return;
@@ -18,6 +21,7 @@ if (synth) {
   // بعض المتصفحات لا تُطلق voiceschanged؛ نعيد المحاولة بهدوء عند أول نطق.
   setTimeout(loadVoices, 400);
   setTimeout(loadVoices, 1500);
+  setTimeout(loadVoices, 3000);
 }
 
 // ---------- تشكيل الفصحى ----------
@@ -38,6 +42,13 @@ const FUSHA_WORDS = {
   'وأنت': 'وَأَنْتَ', 'تنظر': 'تَنْظُر', 'إلي': 'إِلَيَّ', 'إليّ': 'إِلَيَّ', 'اكتب': 'اكْتُب', 'لي': 'لِي',
   'اتصل': 'اِتَّصِل', 'بي': 'بِي', 'توقف': 'تَوَقَّف', 'تعال': 'تَعَالَ', 'مساعدة!': 'مُسَاعَدَة',
   'أحتاج مساعدة': 'أَحْتَاجُ مُسَاعَدَة', 'أنا لا أسمع': 'أَنَا لَا أَسْمَع',
+  // الإشارات العشر الجديدة: تشكيلها حتى لا يقرأها المحرّك بلا حركات
+  'آسف': 'آسِف', 'أعتذر': 'أَعْتَذِر', 'عذرًا': 'عُذْرًا',
+  'بخير': 'بِخَيْر', 'أنا بخير': 'أَنَا بِخَيْر',
+  'سعيد': 'سَعِيد', 'مسرور': 'مَسْرُور',
+  'صغير': 'صَغِير', 'قليل': 'قَلِيل',
+  'يمين': 'يَمِين', 'يسار': 'يَسَار', 'فوق': 'فَوْق', 'تحت': 'تَحْت', 'أعلى': 'أَعْلَى', 'أسفل': 'أَسْفَل',
+  'قوي': 'قَوِيّ', 'قوة': 'قُوَّة',
 };
 const FUSHA_PHRASES = Object.keys(FUSHA_WORDS).filter((k) => k.includes(' ')).sort((a, b) => b.length - a.length);
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -138,11 +149,17 @@ export const tts = {
   speak(text, opt = {}) {
     if (!synth || !text) return false;
     try {
-      const u = new SpeechSynthesisUtterance(opt.fusha === false ? text : toFusha(text));
+      const spoken = opt.fusha === false ? String(text) : toFusha(text);
+      // نفس الكلمة مرتين في أقل من 0.6 ث (حدث مكرر من المحرك ودرس «تعلّم» معاً)
+      // كانت تُلغي النطق الأول قبل أن يُسمع؛ نتجاهل التكرار بدل قطعه.
+      const now = Date.now();
+      if (spoken === lastSpoken.text && now - lastSpoken.at < 600 && opt.cancel !== false) return true;
+      lastSpoken = { text: spoken, at: now };
+      const u = new SpeechSynthesisUtterance(spoken);
       const v = this.pickVoice(opt.voiceURI, opt.lang, opt.gender);
       u.lang = v ? v.lang : (opt.lang || 'ar-SA');
       if (v) u.voice = v;
-      u.rate = opt.rate ?? 0.92;
+      u.rate = opt.rate ?? 0.88;
       u.pitch = opt.pitch ?? 1;
       u.volume = opt.volume ?? 1;
       if (opt.cancel !== false) synth.cancel();
@@ -153,10 +170,14 @@ export const tts = {
     } catch (e) { return false; }
   },
   cancel() { try { synth?.cancel(); } catch (e) { /* لا شيء */ } },
-  /** يلد مرة واحدة عند تغيّر الأصوات (مثلاً بعد ما يفحصها المتصفح) — وأول نداء فوري بعد التحميل. */
+  /** يُستدعى عند تغيّر الأصوات؛ مستمع واحد مشترك مهما فُتحت الإعدادات مرات. */
   onVoicesChanged(cb) {
     if (!synth) return;
-    synth.addEventListener?.('voiceschanged', () => { loadVoices(); cb(); });
+    voiceCbs.add(cb);
+    if (!voiceListenerAdded) {
+      voiceListenerAdded = true;
+      synth.addEventListener?.('voiceschanged', () => { loadVoices(); for (const c of [...voiceCbs]) { try { c(); } catch (e) { /* لا شيء */ } } });
+    }
   },
 };function voiceScore(v, pref) {
   const lang = (v.lang || '').toLowerCase();

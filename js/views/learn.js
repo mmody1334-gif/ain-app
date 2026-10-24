@@ -28,8 +28,8 @@ export function createLearnView(app) {
       if (s.kind === 'static' && s.ref) lessons.push({ id: 'sign:' + s.id, group: 'mine', title: s.word, type: 'pose', pose: Float32Array.from(s.ref), sign: s });
       else if (s.kind === 'motion') lessons.push({ id: 'sign:' + s.id, group: 'mine', title: s.word, type: 'motion', sign: s, key: 'sign:' + s.id });
       else if (s.kind === 'builtin') {
-        if (s.rule.startsWith('shape_')) lessons.push({ id: 'sign:' + s.id, group: 'mine', title: s.word, type: 'pose', pose: shapePose(s.rule), sign: s });
-        else lessons.push({ id: 'sign:' + s.id, group: 'mine', title: s.word, type: 'motion', sign: s, key: 'builtin:' + s.rule });
+        if (s.rule.startsWith('shape_')) lessons.push({ id: 'sign:' + s.id, group: 'mine', title: s.word, type: 'pose', pose: shapePose(s.rule), sign: s, hint: s.hint });
+        else lessons.push({ id: 'sign:' + s.id, group: 'mine', title: s.word, type: 'motion', sign: s, key: 'builtin:' + s.rule, hint: s.hint });
       }
     }
     for (const sh of SHAPES) lessons.push({ id: 'shape:' + sh.id, group: 'shapes', title: sh.name, type: 'pose', pose: shapePose(sh.id), icon: sh.emoji });
@@ -41,7 +41,7 @@ export function createLearnView(app) {
   function renderList() {
     buildLessons();
     listEl.innerHTML = '';
-    const groups = [['mine', 'إشاراتي', 'إشارات قاموسك'], ['shapes', 'أشكال اليد الأساسية', 'تمرين لتعوّد أصابعك على الأوضاع (أشكال عامة، ليست كلمات).'], ['motions', 'حركات جاهزة', 'تمرير وتلويح وهزّ سبابة/قبضة ورسم دائرة، تُستعمل أيضاً في «أوامر».']];
+    const groups = [['mine', 'إشاراتي', 'إشارات قاموسك'], ['shapes', 'أشكال اليد الأساسية', 'تمرين لتعوّد أصابعك على الأوضاع (أشكال عامة، ليست كلمات).'], ['motions', 'حركات جاهزة', 'تمرير وتلويح وهزّ سبابة/قبضة ورسم دائرة ودائرة بقبضة وكف تهتز، تُستعمل أيضاً في «أوامر».']];
     for (const [g, name, sub] of groups) {
       const ls = lessons.filter((l) => l.group === g);
       if (!ls.length) continue;
@@ -73,7 +73,7 @@ export function createLearnView(app) {
     view.setColors(themeColors()); view._fit?.();
     if (l.type === 'pose') {
       view.setPose(l.pose); view.setFeedback(null);
-      descEl.textContent = describePose(l.pose);
+      descEl.textContent = (l.hint ? l.hint + ' — ' : '') + describePose(l.pose);
       lessonEl.querySelector('[data-fingers]').hidden = false;
     } else {
       const a = l.sign ? animOf(l.sign) : builtinAnim(l.rule);
@@ -100,7 +100,7 @@ export function createLearnView(app) {
     doneBox.replaceChildren(h('div', { style: { textAlign: 'center' } }, h('h2', 'أحسنت!'), starsText(n), h('p.small.muted', `النتيجة ${score}٪`)));
     nextBtn.hidden = false;
     if (navigator.vibrate) navigator.vibrate([40, 30, 60]);
-    app.say('أحسنت' + (cur.title ? ' — ' + cur.title : ''));
+    app.say('أحسنت' + (cur.title ? '، ' + cur.title : ''));
   }
 
   function onFrame(out) {

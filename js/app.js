@@ -19,7 +19,7 @@ import { createCommandsView } from './views/commands.js';
 import { createCourseView } from './views/course.js';
 
 const DEFAULT_SETTINGS = {
-  holdSec: 0.6, speakEach: true, rate: 0.92, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
+  holdSec: 0.6, speakEach: true, rate: 0.88, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
 };
 
 // إشارات جاهزة أُضيفت سابقاً للأرقام ثم أُزيلت: أشكالها تتعارض مع إشارات
@@ -132,9 +132,10 @@ class App {
       await this.store.setMeta('starterVersion', starter.version);
       await this.store.setMeta('starterSeen', signs.map((s) => s.id));
     } else if (signs.length && starter.version > applied) {
-      // ترقية: نضيف الإشارات الجاهزة الجديدة فقط، ولا نعيد ما حذفه المستخدم
+      // ترقية: نضيف الإشارات الجاهزة الجديدة فقط، ولا نعيد ما حذفه المستخدم،
+      // ولا نضيف قاعدة سبق أن ربطها المستخدم بكلمة أخرى من «قاموسي» (وإلا صارت قاعدتان لكلمة واحدة)
       const known = new Set(seenStarter || [...signs.map((s) => s.id), 'ana', 'enta', 'huwa']);
-      const add = starter.signs.filter((s) => !known.has(s.id) && !signs.some((x) => x.id === s.id));
+      const add = starter.signs.filter((s) => !known.has(s.id) && !signs.some((x) => x.id === s.id) && !(s.kind === 'builtin' && s.rule && signs.some((x) => x.kind === 'builtin' && x.rule === s.rule)));
       for (const s of add) await this.store.putSign(s);
       signs = signs.concat(add);
       await this.store.setMeta('starterVersion', starter.version);
@@ -462,7 +463,7 @@ class App {
         rebuildVoices();
         this.say(baseLang() === 'ar' ? 'مرحبًا' : 'Hello');
       };
-      voiceSel.onchange = (e) => this.say(baseLang() === 'ar' ? 'مرحبًا أنا حذيفة، سأصدّ ما تقوله' : 'Hello, I am Hudhaifa', { voiceURI: e.target.value });
+      voiceSel.onchange = async (e) => { await this.saveSettings({ ttsVoice: e.target.value }); this.say(baseLang() === 'ar' ? 'مرحبًا أنا حذيفة، سأصدّ ما تقوله' : 'Hello, I am Hudhaifa', { voiceURI: e.target.value }); };
       const speakEach = h('input', { type: 'checkbox', checked: s.speakEach, onchange: (e) => this.saveSettings({ speakEach: e.target.checked }) });
       const skel = h('input', { type: 'checkbox', checked: s.skeleton, onchange: (e) => this.saveSettings({ skeleton: e.target.checked }) });
       const theme = h('div.seg', ['auto', 'light', 'dark'].map((v) => h('button', { type: 'button', 'aria-pressed': String(s.theme === v), onclick: (e) => { this.saveSettings({ theme: v }); theme.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } }, { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' }[v])));
@@ -500,7 +501,7 @@ class App {
         h('div.card', h('h2', 'حول التطبيق'), h('p.small.muted', 'كل المعالجة تتم داخل جهازك: الكاميرا والتدريب والتخزين. لا حساب ولا خادم. صدّر قاموسك من «قاموسي» لتحتفظ بنسخة أو تنقله إلى الحاسوب.'),
           this.installCard(),
           h('p.small.muted', 'علمياً: نقاط اليد تُستخرج بنموذج MediaPipe (21 نقطة × 63 قيمة)، ثم تُحوّل إلى ميزات هندسية: زوايا الأصابع وبوابات الطيّ وموقع اليد عن الكتفين لتمييز الإشارات المتشابهة في الشكل، ويتعلّم المصنّف الإحصائي من تسجيلاتك أنت، ويُعاد ضبط عتبات الأصابع بمعايرة تُنجز على يدك.'),
-          h('div.row', h('span.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي) تعمل بقواعد على نقاط اليد بلا تدريب.')),
+          h('div.row', h('span.small.muted', 'الإشارات الثلاث الثابتة (أنا/أنت/هو) من تسجيلات المشروع الأصلي، ومعها إشارات جاهزة (نعم/لا/مرحبًا/أحسنت/حسنًا/أحبك/اتصل بي/بخير/قوي/صغير/يمين/يسار/فوق/تحت/من فضلك/آسف/سعيد) تعمل بقواعد على نقاط اليد بلا تدريب.')),
           h('p.small.muted', 'يمكنك تسجيل إشارات بيدين، والأبجدية العربية من «قاموسي». ويقيس التطبيق موقع اليد بالنسبة للكتفين لتمييز الإشارات المتشابهة في شكل اليد.'),
           h('p.small.muted', 'دروس تعلم لغة الإشارة جاهزة في قسم «دروس»، مع تمرين الأبجدية المتسلسل في «تعلّم»، وجمل مفضلة وسجل في «ترجمة».')),
         btn('إغلاق', { cls: 'primary block', onclick: close }));
