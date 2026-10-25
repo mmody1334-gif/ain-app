@@ -17,6 +17,10 @@ import { createLearnView } from './views/learn.js';
 import { createDictView } from './views/dict.js';
 import { createCommandsView } from './views/commands.js';
 import { createCourseView } from './views/course.js';
+import { createRoomView } from './views/room.js';
+import { createNameSignView } from './views/namesign.js';
+import { createStreakView } from './views/streak.js';
+import { room } from './room.js';
 
 const DEFAULT_SETTINGS = {
   holdSec: 0.6, speakEach: true, rate: 0.88, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
@@ -31,8 +35,11 @@ const TABS = [
   { id: 'listen', label: 'اسمع', ic: 'listen', make: createListenView, camera: false },
   { id: 'course', label: 'دروس', ic: 'book', make: createCourseView, camera: true },
   { id: 'learn', label: 'تعلّم', ic: 'learn', make: createLearnView, camera: true },
+  { id: 'streak', label: 'تحديات', ic: 'bolt', make: createStreakView, camera: false },
   { id: 'dict', label: 'قاموسي', ic: 'dict', make: createDictView, camera: false },
-  { id: 'commands', label: 'أوامر', ic: 'bolt', make: createCommandsView, camera: true },
+  { id: 'commands', label: 'أوامر', ic: 'warn', make: createCommandsView, camera: true },
+  { id: 'namesign', label: 'اسمي', ic: 'star', make: createNameSignView, camera: true },
+  { id: 'room', label: 'غرفة', ic: 'share', make: createRoomView, camera: false },
 ];
 
 /** أقرب عيّنة إلى المتوسط تُستعمل كوضعية مرجعية للأفاتار والتعلّم. */
@@ -152,6 +159,20 @@ class App {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.__SB_MOCK__) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
+    // استعادة الغرفة الأخيرة عند فتح التطبيق
+    const lastRoom = await this.store.getMeta('last_room', null);
+    if (lastRoom) room.join(lastRoom).catch(() => {});
+    // استقبال طوارئ من جهاز آخر: تشغيل صفارة محلية
+    this.on('remote_sos', (data) => {
+      // عرض تنبيه بسيط بدون تشغيل overlay كامل
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;inset:0;z-index:98;background:#b3170a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;animation:fade .2s ease';
+      el.innerHTML = `<h1 style="font-size:clamp(2rem,10vw,3.5rem);font-family:var(--font-title)">🚨 طوارئ!</h1><p style="font-size:1.2rem">جهاز آخر في الغرفة يحتاج مساعدة</p><p style="font-size:1rem;opacity:.85">${data?.message || ''}</p><button class="btn" style="background:#fff;color:#b3170a;min-height:52px;font-size:1.1rem;min-width:200px" onclick="this.closest('[style*=fixed]').remove()">إغلاق</button>`;
+      document.body.append(el);
+      if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+      this.say('طوارئ! جهاز آخر في الغرفة يحتاج مساعدة', { rate: 0.85 });
+      setTimeout(() => el.remove(), 20000);
+    });
     window.__sb = this;      // للاختبار والتشخيص
   }
 
@@ -377,6 +398,17 @@ class App {
       const q = this.qualityOf(out);
       quality.textContent = q.text;
       quality.className = 'pill ' + q.cls;
+    }
+    // إشارة الاسم الشخصية: ناد المستخدم باسمه
+    for (const e of (out.events || [])) {
+      if (e.sign?.id === 'personal_name_sign') {
+        this.store.getMeta('personal_name', { name: '', greetCount: 0 }).then(meta => {
+          if (!meta.name) return;
+          this.say('أهلاً ' + meta.name + '!');
+          if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+          this.store.setMeta('personal_name', { ...meta, greetCount: (meta.greetCount || 0) + 1 });
+        });
+      }
     }
   }
 

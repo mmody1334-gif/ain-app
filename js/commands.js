@@ -1,6 +1,12 @@
 // أوامر: جمل المواقف، طوارئ، وإعدادات التحكم بالحاسوب (يُصدَّر إلى برنامج بايثون).
 import { BUILTIN_NAMES } from './names.js';
 
+// كلمات الطوارئ العاجلة: أي منها ينطقها التطبيق بأعلى صوت ويهتز فورًا
+export const URGENT_WORDS = new Set(['مساعد', 'طبيب', 'طبيباً', 'دكتور', 'ماء', 'ماءً', 'إسعاف', 'نجدة', 'مساعدة']);
+
+// كلمات الطوارئ العاجلة: أي منها ينطقها التطبيق بأعلى صوت ويهتز فورًا
+export const URGENT_WORDS = new Set(['مساعد', 'طبيب', 'طبيباً', 'دكتور', 'ماء', 'ماءً', 'إسعاف', 'نجدة', 'مساعدة']);
+
 export const ACTIONS = [
   { id: 'right', label: 'السهم → التالي (الشريحة التالية)' },
   { id: 'left', label: 'السهم ← السابق (الشريحة السابقة)' },
@@ -102,10 +108,26 @@ export class Siren {
     this.prime(); if (!this.ctx) return;
     this.stop();
     const o = this.ctx.createOscillator(), g = this.ctx.createGain();
-    o.type = 'square'; g.gain.value = 0.5; o.connect(g); g.connect(this.ctx.destination); o.start();
+    o.type = 'square'; g.gain.value = 0.8; o.connect(g); g.connect(this.ctx.destination); o.start();
     this.osc = o; let hi = false;
     this.timer = setInterval(() => { hi = !hi; o.frequency.value = hi ? 960 : 640; }, 380);
     o.frequency.value = 640;
+  }
+  maxVolume() {
+    this.prime(); if (!this.ctx) return;
+    this.stop();
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'square'; g.gain.value = 1.0; o.connect(g); g.connect(this.ctx.destination); o.start();
+    this.osc = o; let hi = false;
+    this.timer = setInterval(() => { hi = !hi; o.frequency.value = hi ? 880 : 660; }, 380);
+    o.frequency.value = 660;
+  }
+  pulse() {
+    // short urgent beep for non-SOS urgent words
+    this.prime(); if (!this.ctx) return;
+    const o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = 'square'; g.gain.value = 0.7; o.connect(g); g.connect(this.ctx.destination);
+    o.frequency.value = 880; o.start(); o.stop(this.ctx.currentTime + 0.15);
   }
   stop() { clearInterval(this.timer); try { this.osc?.stop(); } catch (e) { /* لا شيء */ } this.osc = null; }
 }
