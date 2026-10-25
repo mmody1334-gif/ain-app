@@ -58,14 +58,16 @@ main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6p
 
 /* ---- التنقّل السفلي ---- */
 nav.tabs {
-  display: grid; grid-template-columns: repeat(6, 1fr); background: var(--surface); border-top: 1px solid var(--line);
-  padding: 6px max(8px, env(safe-area-inset-left, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-right, 0px));
+  display: flex; overflow-x: auto; gap: 2px; background: var(--surface); border-top: 1px solid var(--line);
+  padding: 6px max(4px, env(safe-area-inset-left, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-right, 0px));
+  scrollbar-width: none;
 }
+nav.tabs::-webkit-scrollbar { display: none; }
 nav.tabs button {
-  display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; padding: 6px 2px; border-radius: 14px;
-  color: var(--muted); font-size: .72rem; font-weight: 600; cursor: pointer; min-height: 52px;
+  display: flex; flex-direction: column; align-items: center; gap: 2px; background: none; border: 0; padding: 6px 8px; border-radius: 14px;
+  color: var(--muted); font-size: .68rem; font-weight: 600; cursor: pointer; min-height: 52px; flex-shrink: 0; min-width: 54px;
 }
-nav.tabs button svg { width: 24px; height: 24px; }
+nav.tabs button svg { width: 22px; height: 22px; }
 nav.tabs button[aria-selected="true"] { color: var(--accent); background: var(--accent-soft); }
 
 /* ---- مسرح الكاميرا بملء الشاشة ---- */
