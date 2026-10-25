@@ -136,6 +136,8 @@ export function createCommandsView(app) {
     const vib = setInterval(() => navigator.vibrate?.([400, 200, 400]), 1200);
     const say = setInterval(() => app.say(cfg.sos.message, { rate: 0.9 }), 7000);
     sosOverlay._clear = () => { clearInterval(vib); clearInterval(say); };
+    // إرسال الطوارئ لكل الأجهزة في الغرفة
+    import('../room.js').then(({ room }) => { if (room?.roomCode) room.sendSOS(cfg.sos.message); }).catch(() => {});
     const actions = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '360px' } });
     const link = (label, href) => { const a = h('a.btn', { href, style: { background: '#fff', color: '#b3170a', textDecoration: 'none', minHeight: '54px' } }, label); return a; };
     if (links.tel) actions.append(link('اتصل الآن', links.tel));

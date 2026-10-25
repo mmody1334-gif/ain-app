@@ -1,11 +1,17 @@
 // ترجمة: الكاميرا ترى الإشارة، والتطبيق ينطقها ويكوّن جملة. ومعها مفضلة وسجل للجمل.
 import { h, btn, icon, toast } from '../ui.js';
+import { URGENT_WORDS, Siren } from '../commands.js';
+import { room } from '../room.js';
+
+const _siren = new Siren();
 
 const MAX_HIST = 30;
 
 export function createTranslateView(app) {
   let root, slot, bigEl, sentEl, tipEl, words = [], off = null, activeEl = null, camBtn, favEl, histEl, quickEl;
   let saved = { favs: [], hist: [] };
+  let torchActive = false;
+  let torchBtn = null;
 
   async function loadSent() { saved = { favs: [], hist: [], ...(await app.store.getMeta('sentences', null)) }; }
   async function saveSent() { await app.store.setMeta('sentences', saved); renderSaved(); }
@@ -60,9 +66,26 @@ export function createTranslateView(app) {
       words.push({ text: e.sign.word, id: e.sign.id });
       bigEl.textContent = e.sign.word;
       bigEl.animate([{ transform: 'scale(.8)', opacity: 0.3 }, { transform: 'scale(1)', opacity: 1 }], { duration: 220 });
-      if (navigator.vibrate) navigator.vibrate(30);
+
+      // كلمات الطوارئ العاجلة: صوت أعلى + اهتزاز مضاعف + وميض أحمر
+      const isUrgent = URGENT_WORDS.has(e.sign.word);
+      if (isUrgent) {
+        _siren.pulse();
+        if (navigator.vibrate) navigator.vibrate([100, 50, 100, 50, 200]);
+        bigEl.animate([
+          { background: '#b3170a', color: '#fff', borderRadius: '12px' },
+          { background: 'transparent', color: 'var(--accent)', borderRadius: '0' },
+        ], { duration: 800 });
+        app.say(e.sign.word, { rate: 0.75 }); // أبطأ وأوضح
+      } else {
+        if (navigator.vibrate) navigator.vibrate(30);
+        if (app.settings.speakEach) app.say(e.sign.word);
+      }
+
       renderSentence();
-      if (app.settings.speakEach) app.say(e.sign.word);
+
+      // إرسال الإشارة للأجهزة في الغرفة
+      if (room.roomCode) room.sendSign(e.sign.word, e.sign.id);
     }
   }
 
@@ -134,9 +157,47 @@ function quickShare() {
       app.mountStage(slot);
       app.cam.showSkeleton = app.settings.skeleton;
       off = app.cam.onFrame(onEvent);
+
+      // زر الفلاش داخل أدوات المسرح
+      torchActive = false;
+      torchBtn = document.createElement('button');
+      torchBtn.className = 'iconbtn';
+      torchBtn.setAttribute('aria-label', 'تشغيل/إيقاف الفلاش');
+      torchBtn.title = 'إضاءة الفلاش للتصوير في الظلام';
+      torchBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2l-5 9h8l-2 11 10-13h-7z"/></svg>`;
+      torchBtn.onclick = async () => {
+        try {
+          const track = app.cam.video?.srcObject?.getVideoTracks?.()?.[0];
+          if (!track) { toast('شغّل الكاميرا أولاً'); return; }
+          torchActive = !torchActive;
+          await track.applyConstraints({ advanced: [{ torch: torchActive }] });
+          torchBtn.style.color = torchActive ? '#f5b64e' : '';
+          torchBtn.style.background = torchActive ? 'rgba(245,182,78,.25)' : '';
+        } catch (e) { toast('هذا الجهاز لا يدعم الفلاش عبر المتصفح', 'bad'); }
+      };
+      // أضف الزر لأدوات المسرح
+      const tools = app.stage.querySelector('.tools');
+      if (tools && !tools.querySelector('[data-torch]')) {
+        torchBtn.dataset.torch = '1';
+        tools.insertBefore(torchBtn, tools.firstChild);
+      }
+
       renderTip();
       loadSent().then(renderSaved);
     },
-    hide() { off?.(); off = null; app.unmountStage(); recordHistory(); },
+    hide() {
+      off?.(); off = null;
+      // أطفئ الفلاش عند مغادرة الشاشة
+      if (torchActive) {
+        try {
+          const track = app.cam.video?.srcObject?.getVideoTracks?.()?.[0];
+          track?.applyConstraints({ advanced: [{ torch: false }] });
+        } catch (e) {}
+        torchActive = false;
+        if (torchBtn) { torchBtn.style.color = ''; torchBtn.style.background = ''; }
+      }
+      app.unmountStage();
+      recordHistory();
+    },
   };
 }
