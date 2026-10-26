@@ -1,0 +1,58 @@
+# يبني ملف APK لتطبيق «حذيفة» وينشره في Releases باسم apk-latest.
+# التطبيق نافذة كروم على الموقع، فلا يحتاج إعادة بناء عند تحديث الموقع؛ يُبنى فقط عند تغيير مجلد android أو الأيقونات.
+name: Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['android/**', 'icons/**', '.github/workflows/android.yml']
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.9' }
+      - name: Launcher icons
+        run: |
+          command -v convert >/dev/null || (sudo apt-get update && sudo apt-get install -y imagemagick)
+          for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
+            n=${d%%:*}; s=${d##*:}
+            mkdir -p android/app/src/main/res/mipmap-$n
+            convert icons/icon-512.png -resize ${s}x${s} android/app/src/main/res/mipmap-$n/ic_launcher.png
+          done
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.keystore
+            echo "KEYSTORE_PASS=$KS_PASS" >> "$GITHUB_ENV"
+            echo "SIGNED_WITH=stable" >> "$GITHUB_ENV"
+          else
+            # بلا أسرار: مفتاح مؤقت لهذه النسخة فقط (يعمل، لكن يظهر شريط العنوان أعلى التطبيق)
+            P=$(openssl rand -hex 12)
+            keytool -genkeypair -keystore android/app/release.keystore -alias ain -keyalg RSA -keysize 2048 -validity 10000 -storepass "$P" -keypass "$P" -dname "CN=Hudhaifa temp"
+            echo "KEYSTORE_PASS=$P" >> "$GITHUB_ENV"
+            echo "SIGNED_WITH=temporary" >> "$GITHUB_ENV"
+          fi
+      - name: Build APK
+        working-directory: android
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk hudhaifa.apk
+          gh release delete apk-latest -y --cleanup-tag || true
+          gh release create apk-latest hudhaifa.apk --title "تطبيق حذيفة (APK)" --latest \
+            --notes "نسخة ${{ github.run_number }} — توقيع: ${SIGNED_WITH}. ثبّت الملف على أندرويد (اسمح بالتثبيت من مصادر غير معروفة). التطبيق يفتح الموقع بملء الشاشة ويتحدّث تلقائياً مع الموقع."
+      - uses: actions/upload-artifact@v4
+        with: { name: hudhaifa-apk, path: hudhaifa.apk }

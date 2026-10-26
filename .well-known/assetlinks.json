@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.hudhaifa.ain",
+    "sha256_cert_fingerprints": ["34:16:B8:CD:7A:FC:08:BB:3A:74:27:5E:3F:2E:2D:D6:8B:57:9B:07:8E:12:92:2B:00:FC:F4:B8:61:00:59:ED"]
+  }
+}]
