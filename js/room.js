@@ -8,6 +8,7 @@ const BACKOFF_MS = 3000;       // مهلة إعادة المحاولة بعد ف
 const RETRY_CAP = 30000;
 const CONNECTED_WINDOW = 8000; // «متصل» إن نجحت محاولة خلال المدة
 const MAX_OUTBOX = 60;
+const FETCH_TIMEOUT = 8000;    // أمن ضد الطلبات المعلّقة: ألغِ بعد 8 ثوانٍ
 
 const outboxKey = (c) => `ain_outbox_${c}`;
 
@@ -53,6 +54,23 @@ class RoomClient extends EventTarget {
     this.missedCount = 0;
     try { this._since = Number(localStorage.getItem('ain_since_' + c) || 0) || 0; } catch (_) { this._since = 0; }
     this._connectBC();
+    // قفزات فورية عند العودة للأمام أو عودة الشبكة: التاب الخلفي يخنق المؤقتات،
+    // لذا نعتمد على ردّ فعله الخاص عند الاسترجاع لتنعيم غياب الاستقصاء
+    if (!this._listeners) {
+      this._listeners = true;
+      const wake = () => {
+        if (this.active && document.visibilityState === 'visible') {
+          this._delay = POLL_MS;
+          this._schedule(0);
+          // علبة الصادر تُفرَّغ فورًا مع أول دورة
+        }
+      };
+      document.addEventListener('visibilitychange', wake);
+      window.addEventListener('focus', wake);
+      window.addEventListener('online', wake);
+      // القفل قد يعلق في حالة حاجة قديمة — تفكيك دوري احتياطي
+      setInterval(() => { if (this._busy && Date.now() - this._lastOk > CONNECTED_WINDOW * 4) this._busy = false; }, 15000);
+    }
     // إخبار الخادم دون انتظار (يُنشئ/يُجدد الغرفة ويعيد قائمة الأجهزة)
     this._api('/api/room', { code: c, device: this.deviceId }).then((d) => {
       if (d && d.members) { this.members = d.members; this._announce(); }
@@ -69,15 +87,23 @@ class RoomClient extends EventTarget {
     clearTimeout(this._timer); this._timer = null;
     this.roomCode = null; this.members = []; this.bc = null; this.missedCount = 0;
     if (code) {
-      try { await fetch(API + '/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, device: this.deviceId }), keepalive: true }); } catch (_) {}
+      try { await this._fetch(API + '/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, device: this.deviceId }), keepalive: true }); } catch (_) {}
       try { localStorage.removeItem(outboxKey(code)); } catch (_) {}
     }
     this.dispatchEvent(new CustomEvent('status', { detail: { connected: false, peers: 0 } }));
   }
 
   // == الشبكة ============================================================
+  /** fetch بمهلة صريحة: تعليق الشبكة لا يجمّد دورة الاستقصاء ولا علبة الصادر */
+  async _fetch(path, init = {}) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT);
+    try { return await fetch(path, { ...init, signal: ctl.signal }); }
+    finally { clearTimeout(t); }
+  }
+
   async _api(path, payload) {
-    const r = await fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const r = await this._fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const d = await r.json().catch(() => null);
     if (!r.ok || !d || d.ok === false) throw new Error((d && d.error) || ('http ' + r.status));
     this._lastOk = Date.now();
@@ -102,7 +128,7 @@ class RoomClient extends EventTarget {
     } catch (_) { /* نتابع الاستقصاء الأساسي رغم ذلك */ }
 
     try {
-      const r = await fetch(`${API}/api/messages?code=${encodeURIComponent(this.roomCode)}&since=${this._since}`);
+      const r = await this._fetch(`${API}/api/messages?code=${encodeURIComponent(this.roomCode)}&since=${this._since}`);
       const d = await r.json();
       if (!r.ok || !d || d.ok === false) throw new Error('http ' + r.status);
       this._lastOk = Date.now();
@@ -153,7 +179,7 @@ class RoomClient extends EventTarget {
     if (!this.roomCode || !this.active) return;
     const rec = { at: Date.now(), type, from: this.deviceId, data, ...data };
     this._broadcast(rec); // مسار فوري محلي
-    fetch(API + '/api/msg', {
+    this._fetch(API + '/api/msg', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: this.roomCode, device: this.deviceId, type, ...data }),
     }).then(() => { this._lastOk = Date.now(); }).catch(() => {
