@@ -1,5 +1,5 @@
 ﻿// حذيفة — عامل خدمة بسيط: يخزّن واجهة التطبيق ليعمل بلا إنترنت بعد أول زيارة.
-const VERSION = 'ain-v22';
+const VERSION = 'ain-v23';
 const SHELL = ['./', 'index.html', 'css/style.css', 'manifest.webmanifest', 'data/starter.json', 'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/app.js', 'js/ui.js', 'js/store.js', 'js/engine.js', 'js/camera.js', 'js/speech.js', 'js/arabic.js', 'js/features.js', 'js/classifier.js', 'js/pairmodel.js', 'js/motion.js', 'js/handModel.js', 'js/calibrate.js', 'js/alphabet.js',
   'js/hand3d.js', 'js/anims.js', 'js/learn.js', 'js/recorder.js', 'js/commands.js', 'js/names.js', 'js/pcexport.js', 'js/course_data.js', 'js/room.js', 'js/journey.js', 'js/sfx.js', 'js/face.js', 'js/sentence.js',

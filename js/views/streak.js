@@ -221,7 +221,7 @@ export function createStreakView(app) {
       dots);
       path.append(row);
     }
-    root.append(h('div.card', h('h2', '🗺️ رحلة 30 يوماً'), h('p.small.muted', 'كل يوم أصعب من الذي قبله. يُفتح يوم واحد في اليوم بعد إكمال سابقه.'), path));
+    root.append(h('div.card.journey-path', h('h2', '🗺️ رحلة 30 يوماً'), h('p.small.muted', 'كل يوم أصعب من الذي قبله. يُفتح يوم واحد في اليوم بعد إكمال سابقه.'), path));
 
     // الشارات + الصوت
     if (streak.badges && streak.badges.length) {
