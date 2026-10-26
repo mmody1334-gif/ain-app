@@ -23,7 +23,7 @@ import { createStreakView } from './views/streak.js';
 import { room } from './room.js';
 
 const DEFAULT_SETTINGS = {
-  holdSec: 0.6, speakEach: true, rate: 0.88, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu',
+  holdSec: 0.6, speakEach: true, rate: 0.88, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu', roomSend: 'auto', roomSpeak: true,
 };
 
 // إشارات جاهزة أُضيفت سابقاً للأرقام ثم أُزيلت: أشكالها تتعارض مع إشارات
@@ -159,18 +159,31 @@ class App {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.__SB_MOCK__) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
+    // الغرفة: نبني واجهتها مبكراً (دون عرضها) حتى تلتقط السجل والرسائل الواردة من أول لحظة
+    const roomTab = this.views.room;
+    if (roomTab && !roomTab.built) { roomTab.api = roomTab.def.make(this); roomTab.api.mount(roomTab.root); roomTab.built = true; }
+    let unread = 0;
+    this.on('room_unread', (n) => {
+      unread = n ? unread + n : 0;
+      const b = document.querySelector('#tabs button[data-tab="room"]');
+      if (b) { if (unread) b.dataset.badge = unread > 9 ? '9+' : String(unread); else delete b.dataset.badge; }
+    });
     // استعادة الغرفة الأخيرة عند فتح التطبيق
     const lastRoom = await this.store.getMeta('last_room', null);
     if (lastRoom) room.join(lastRoom).catch(() => {});
-    // استقبال طوارئ من جهاز آخر: تشغيل صفارة محلية
+    // استقبال طوارئ من جهاز آخر: شاشة حمراء + صوت (النص الوارد يُعرض نصاً لا HTML)
     this.on('remote_sos', (data) => {
-      // عرض تنبيه بسيط بدون تشغيل overlay كامل
       const el = document.createElement('div');
       el.style.cssText = 'position:fixed;inset:0;z-index:98;background:#b3170a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px;animation:fade .2s ease';
-      el.innerHTML = `<h1 style="font-size:clamp(2rem,10vw,3.5rem);font-family:var(--font-title)">🚨 طوارئ!</h1><p style="font-size:1.2rem">جهاز آخر في الغرفة يحتاج مساعدة</p><p style="font-size:1rem;opacity:.85">${data?.message || ''}</p><button class="btn" style="background:#fff;color:#b3170a;min-height:52px;font-size:1.1rem;min-width:200px" onclick="this.closest('[style*=fixed]').remove()">إغلاق</button>`;
+      const h1 = document.createElement('h1'); h1.style.cssText = 'font-size:clamp(2rem,10vw,3.5rem);font-family:var(--font-title)'; h1.textContent = '🚨 طوارئ!';
+      const p1 = document.createElement('p'); p1.style.fontSize = '1.2rem'; p1.textContent = (data?.name ? data.name : 'جهاز آخر في الغرفة') + ' يحتاج مساعدة';
+      const p2 = document.createElement('p'); p2.style.cssText = 'font-size:1rem;opacity:.85'; p2.textContent = data?.message || '';
+      const close = document.createElement('button'); close.className = 'btn'; close.style.cssText = 'background:#fff;color:#b3170a;min-height:52px;font-size:1.1rem;min-width:200px'; close.textContent = 'إغلاق';
+      close.onclick = () => el.remove();
+      el.append(h1, p1, p2, close);
       document.body.append(el);
       if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
-      this.say('طوارئ! جهاز آخر في الغرفة يحتاج مساعدة', { rate: 0.85 });
+      this.say('طوارئ! ' + (data?.name || 'جهاز آخر في الغرفة') + ' يحتاج مساعدة', { rate: 0.85 });
       setTimeout(() => el.remove(), 20000);
     });
     window.__sb = this;      // للاختبار والتشخيص

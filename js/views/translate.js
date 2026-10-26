@@ -41,6 +41,43 @@ export function createTranslateView(app) {
   let faceOn = true, autoOn = true;      // إعدادات المخزن: قواعد الوجه والتجميع الآلي
   let faceChip = null, faceCb = null, faceTimer = 0, sirenTimer = 0;
   let autoTimer = 0;
+  let roomBar = null;
+
+  const roomMode = () => app.settings.roomSend || 'auto';   // auto | manual | off
+
+  /** شريط الغرفة: يظهر فقط داخل غرفة — اختيار الإرسال (تلقائي/يدوي/إيقاف) وزر إرسال الجملة */
+  function renderRoomBar() {
+    if (!roomBar) return;
+    roomBar.innerHTML = '';
+    roomBar.hidden = !room.roomCode;
+    if (!room.roomCode) return;
+    const mode = roomMode();
+    const st = room.mode === 'ws' ? ['متصل فوري', 'ok'] : room.connected ? ['متصل', 'warn'] : ['غير متصل', ''];
+    const peers = room.peerCount;
+    const seg = h('div.seg', { style: { width: '100%' } }, [['auto', 'كل إشارة'], ['manual', 'بزر'], ['off', 'إيقاف']].map(([v, l]) =>
+      h('button', { type: 'button', 'aria-pressed': String(mode === v), onclick: async () => {
+        await app.saveSettings({ roomSend: v });
+        if (v === 'off') room.signing(false);
+        renderRoomBar();
+        toast(v === 'auto' ? 'كل إشارة تُرسل للغرفة فور التعرّف عليها' : v === 'manual' ? 'كوّن الجملة ثم اضغط «أرسل للغرفة»' : 'لن يُرسل شيء للغرفة', 'ok');
+      } }, l)));
+    roomBar.append(
+      h('div.row', { style: { gap: '8px', alignItems: 'center', flexWrap: 'wrap' } },
+        h('button.chip-status' + (st[1] ? '.' + st[1] : ''), { type: 'button', style: { border: 0, cursor: 'pointer' }, title: 'افتح المحادثة', onclick: () => app.go('room') },
+          '💬 الغرفة ' + room.roomCode + ' · ' + st[0] + (peers ? ' · ' + peers + ' معك' : ''))),
+      h('div.small.muted', 'إرسال إشاراتك للغرفة:'), seg,
+);
+    if (mode === 'manual') roomBar.append(btn('أرسل الجملة للغرفة', { ic: 'chev', cls: 'primary block', onclick: sendSentenceToRoom }));
+  }
+
+  function sendSentenceToRoom() {
+    const a = buildSentence();
+    if (!a.text) { toast('كوّن جملة بالإشارات أولاً', 'bad'); return; }
+    room.sendSentence(a.text, words.map((w) => w.text));
+    toast('أُرسلت للغرفة ✓', 'ok');
+    recordHistory(a.text);
+    words = []; bigEl.textContent = ''; renderSentence(); clearTimeout(autoTimer);
+  }
 
   async function loadSent() { saved = { favs: [], hist: [], ...(await app.store.getMeta('sentences', null)) }; }
   async function saveSent() { await app.store.setMeta('sentences', saved); renderSaved(); }
@@ -149,8 +186,8 @@ export function createTranslateView(app) {
       renderSentence();
       armAuto();
 
-      // إرسال الإشارة للأجهزة في الغرفة
-      if (room.roomCode) room.sendSign(e.sign.word, e.sign.id);
+      // إرسال الإشارة للغرفة: فقط في الوضع التلقائي (في اليدوي تُرسل الجملة بزر)
+      if (room.roomCode && roomMode() === 'auto') room.sendSign(e.sign.word, e.sign.id);
     }
   }
 
@@ -202,6 +239,8 @@ export function createTranslateView(app) {
       faceChip = h('span.chip-status', { hidden: true });
       sentEl = h('div.sentence', { 'aria-live': 'polite' });
       tipEl = h('div');
+      roomBar = h('div.card', { hidden: true, style: { padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' } });
+      room.addEventListener('status', renderRoomBar);
       favEl = h('div');
       histEl = h('div');
       quickEl = h('div');
@@ -216,7 +255,7 @@ export function createTranslateView(app) {
         btn('', { ic: 'trash', cls: 'ghost', title: 'مسح', onclick: () => { words = []; bigEl.textContent = ''; renderSentence(); clearTimeout(autoTimer); } }));
       root.append(slot,
         h('div.row.center', { style: { justifyContent: 'center', gap: '8px' } }, bigEl, faceChip),
-        sentEl, actions, quickEl, tipEl,
+        sentEl, actions, roomBar, quickEl, tipEl,
         h('div.card', h('label.switch', h('span', 'قواعد تعابير الوجه (سؤال/نفي/نعم)'), faceCb),
           h('label.switch', h('span', 'انطق الجملة آلياً بعد 6 ثوانٍ من السكون'), autoCb)),
         h('div.card', h('h2', 'جملي المفضلة'), favEl),
@@ -225,7 +264,8 @@ export function createTranslateView(app) {
       app.store.getMeta('face_grammar', true).then((v) => { faceOn = v !== false; faceCb.checked = faceOn; });
       app.store.getMeta('auto_sentence', true).then((v) => { autoOn = v !== false; autoCb.checked = autoOn; });
       renderSentence();
-      app.on('camera', () => { renderTip(); updateFaceChip(); });
+      renderRoomBar();
+      app.on('camera', () => { renderTip(); updateFaceChip(); if (!app.cam.running) room.signing(false); });
       app.on('signs', renderTip);
     },
     show() {
@@ -233,6 +273,7 @@ export function createTranslateView(app) {
       app.cam.showSkeleton = app.settings.skeleton;
       off = app.cam.onFrame((out, primary, t) => {
         onEvent(out);
+        if (room.roomCode && roomMode() !== 'off') room.signing(out.hand);
         // تعابير الوجه: تشغيل كسول على نفس إطارات الكاميرا، ثم تحديث الشريحة
         if (faceOn && app.cam.running && faceOn !== false) updateFace(app.cam.video, t);
         updateFaceChip();
@@ -270,10 +311,12 @@ export function createTranslateView(app) {
       faceTimer = setInterval(updateFaceChip, 1000);
 
       renderTip();
+      renderRoomBar();
       loadSent().then(renderSaved);
     },
     hide() {
       off?.(); off = null;
+      room.signing(false);
       clearInterval(faceTimer);
       clearTimeout(sirenTimer);
       clearTimeout(autoTimer);
