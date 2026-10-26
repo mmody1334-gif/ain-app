@@ -23,7 +23,7 @@ import { createStreakView } from './views/streak.js';
 import { room } from './room.js';
 
 const DEFAULT_SETTINGS = {
-  holdSec: 0.6, speakEach: true, rate: 0.88, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu', roomSend: 'auto', roomSpeak: true,
+  holdSec: 0.6, speakEach: true, rate: 0.88, ttsLang: 'ar-SA', sttLang: 'ar-SA', ttsVoice: '', ttsGender: 'auto', facing: 'user', theme: 'auto', skeleton: true, detector: 'cpu', roomSend: 'auto', roomSpeak: true, sfx: true,
 };
 
 // إشارات جاهزة أُضيفت سابقاً للأرقام ثم أُزيلت: أشكالها تتعارض مع إشارات
@@ -159,6 +159,9 @@ class App {
     if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !window.__SB_MOCK__) {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     }
+    // التحديات: نبنيها مبكراً حتى تُحسب المهام من أي قسم (تعلّم/ترجمة) حتى لو لم تُفتح صفحتها
+    const chTab = this.views.streak;
+    if (chTab && !chTab.built) { chTab.api = chTab.def.make(this); chTab.api.mount(chTab.root); chTab.built = true; }
     // الغرفة: نبني واجهتها مبكراً (دون عرضها) حتى تلتقط السجل والرسائل الواردة من أول لحظة
     const roomTab = this.views.room;
     if (roomTab && !roomTab.built) { roomTab.api = roomTab.def.make(this); roomTab.api.mount(roomTab.root); roomTab.built = true; }
@@ -304,8 +307,14 @@ class App {
     const p = this.progress[id] || { best: 0, stars: 0, n: 0 };
     p.best = Math.max(p.best, score); p.n++;
     p.stars = Math.max(p.stars, score >= 90 ? 3 : score >= 78 ? 2 : 1);
+    // أفضل نتيجة اليوم (للمراجعة اليومية في التحديات)
+    const d = new Date(), z = (n) => String(n).padStart(2, '0');
+    const today = `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}`;
+    if (p.day !== today) { p.day = today; p.dayBest = 0; }
+    p.dayBest = Math.max(p.dayBest || 0, score); p.last = Date.now();
     this.progress[id] = p;
     await this.store.setMeta('progress', this.progress);
+    this.emit('progress', { id, score });
   }
 
   // ---------- النطق ----------
