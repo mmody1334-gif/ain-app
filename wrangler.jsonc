@@ -1,0 +1,10 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ain",
+  "compatibility_date": "2026-10-19",
+  "assets": {
+    "directory": "./_deploy",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

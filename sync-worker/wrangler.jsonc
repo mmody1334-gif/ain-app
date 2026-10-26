@@ -1,0 +1,10 @@
+// غرفة المحادثة على Cloudflare Workers + KV
+// Worker مستقل عن موقع "ain" — جسور نقل الرسائل بسيط
+{
+  "name": "ain-chat",
+  "main": "src/index.js",
+  "compatibility_date": "2025-01-01",
+  "kv_namespaces": [
+    { "binding": "ROOMS", "id": "dbe2abd51cb44edf893733300071a731" }
+  ]
+}

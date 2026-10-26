@@ -1,0 +1,3 @@
+# مكافئ netlify.toml على Cloudflare Pages: بدون build، والنشر من جذر المستودع
+/sw.js
+  Cache-Control: no-cache

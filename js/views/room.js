@@ -1,25 +1,31 @@
-// واجهة ربط الأجهزة بكود الغرفة
+// واجهة ربط الأجهزة بكود الغرفة — مزامنة عبر الخادم (رسائل تصل حتى بعد الإغلاق)
 import { h, btn, icon, toast, sheet } from '../ui.js';
 import { room, ROOM_EVENTS } from '../room.js';
 
 export function createRoomView(app) {
   let root, statusEl, msgListEl, msgInput;
-  const messages = [];
 
-  room.addEventListener('status', () => renderStatus());
+  const messages = []; // [{text, from, at, isSign}]
+
+  room.addEventListener('status', () => { renderStatus(); });
   room.addEventListener('peer_join', () => { toast('📱 جهاز جديد انضم للغرفة', 'ok'); renderStatus(); });
   room.addEventListener('message', (e) => {
     const msg = e.detail;
+    const fromOther = msg.from && msg.from !== room.deviceId;
     if (msg.type === ROOM_EVENTS.SOS) {
-      toast('🚨 طوارئ من جهاز آخر في الغرفة!', 'bad');
-      if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
-      app.emit('remote_sos', msg.data);
-    } else if (msg.type === ROOM_EVENTS.SIGN) {
-      messages.push({ text: '🤲 ' + msg.data.word, from: msg.from, at: msg.at, isSign: true });
+      if (fromOther) {
+        toast('🚨 طوارئ من جهاز آخر في الغرفة!', 'bad');
+        if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+        app.emit('remote_sos', msg.data || {});
+      }
+      messages.push({ text: '🚨 ' + (msg.data?.message || 'استغاثة'), from: msg.from, at: msg.at });
       renderMessages();
-      if (app.settings.speakEach) app.say(msg.data.word);
+    } else if (msg.type === ROOM_EVENTS.SIGN) {
+      messages.push({ text: '🤲 ' + (msg.data?.word || ''), from: msg.from, at: msg.at, isSign: true });
+      renderMessages();
+      if (fromOther && app.settings.speakEach) app.say(msg.data.word);
     } else if (msg.type === ROOM_EVENTS.MSG) {
-      messages.push({ text: msg.data.text, from: msg.from, at: msg.at });
+      messages.push({ text: String(msg.data?.text || ''), from: msg.from, at: msg.at });
       renderMessages();
     }
   });
@@ -35,8 +41,14 @@ export function createRoomView(app) {
         h('b', { style: { fontSize: '1.4rem', letterSpacing: '0.15em', fontFamily: 'var(--font-title)' } }, room.roomCode),
         h('span.chip-status' + (room.connected ? '.ok' : ''), room.connected ? 'متصل' : 'جارٍ الاتصال…'),
       ),
-      h('p.small.muted', { style: { marginTop: '4px' } },
-        room.peerCount > 0 ? room.peerCount + ' جهاز آخر في الغرفة 🟢' : 'في انتظار انضمام جهاز آخر…'),
+      h('div', { style: { marginTop: '4px' } },
+        h('p.small.muted', room.peerCount > 0
+          ? room.peerCount + ' جهاز آخر في الغرفة 🟢'
+          : 'في انتظار انضمام جهاز آخر…'),
+        room.missedCount > 0
+          ? h('p.small.muted', '📥 وصلتك رسائل وأنت مغلق (' + room.missedCount + ')')
+          : null,
+      ),
     );
   }
 
@@ -44,7 +56,7 @@ export function createRoomView(app) {
     if (!msgListEl) return;
     msgListEl.innerHTML = '';
     if (!messages.length) { msgListEl.append(h('p.small.muted', 'الرسائل والإشارات من الأجهزة الأخرى تظهر هنا.')); return; }
-    for (const m of messages.slice(-20)) {
+    for (const m of messages.slice(-30)) {
       const isMe = m.from === room.deviceId;
       msgListEl.append(h('div', {
         style: {
@@ -72,7 +84,7 @@ export function createRoomView(app) {
     root.append(
       h('div.card',
         h('h2', '📡 ربط الأجهزة بكود الغرفة'),
-        h('p.small.muted', 'أنشئ غرفة أو انضم لواحدة. الإشارات المترجمة والطوارئ تصل لكل الأجهزة في الغرفة فورًا عبر الإنترنت.'),
+        h('p.small.muted', 'أنشئ غرفة أو انضم لواحدة. الإشارات المترجمة والطوارئ تصل لكل الأجهزة فورًا، وما يُرسل وأنت مُغلق يُحفَظ على الخادم ويستقبله التطبيق عند فتحه.'),
         statusEl,
         h('div.row', { style: { marginTop: '8px', gap: '8px' } }, ...joinOrCreate),
       ),
@@ -86,10 +98,10 @@ export function createRoomView(app) {
         h('h2', 'كيف يعمل؟'),
         h('ol.small', { style: { paddingInlineStart: '20px', lineHeight: '2' } },
           h('li', 'اضغط «إنشاء غرفة» — يظهر كود من 4 أرقام.'),
-          h('li', 'أرسل الكود للجهاز الآخر — يضغط «انضم بكود» ويدخله.'),
-          h('li', 'كل إشارة تُترجمها تصل للجهاز الآخر فورًا.'),
-          h('li', 'الطوارئ SOS تُطلق على كلا الجهازين في نفس اللحظة.'),
-          h('li', 'الغرفة تبقى طالما الجهازان متصلان بالإنترنت.'),
+          h('li', 'أرسل الكود للجهاز الآخر — يدخله عبر «انضم بكود» ولو من شبكة أخرى.'),
+          h('li', 'كل إشارة أو طوارئ يصل فورًا للجهاز الآخر عبر خادم سحابي.'),
+          h('li', 'إذا كان التطبيق مُغلقاً كانت الرسائل محفوظة وتظهر عند فتحه.'),
+          h('li', 'الغرفة ورسائلها تبقى محفوظة أياماً — الكود هو مفتاحها.'),
         ),
       ),
     );

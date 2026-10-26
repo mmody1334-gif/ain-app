@@ -278,4 +278,16 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
 .alpha.done small { color: var(--ok); }
 .word small.spell { display: inline-block; margin-inline-start: 6px; font-size: .6rem; font-weight: 600; color: var(--accent); opacity: .85; }
 
+/* ---- تعابير الوجه والجملة الكبيرة ---- */
+.row.center .bigword { padding-block: 4px; }
+.row.center .chip-status { align-self: center; animation: pop .25s ease; }
+
+/* وميض الطوارئ: طبقة حمراء كاملة الشاشة */
+.urgent-overlay { font-family: var(--font-title); color: #fff; text-align: center; padding: 20px; }
+.urgent-emoji { font-size: clamp(4rem, 18vw, 8rem); line-height: 1; }
+.urgent-word { font-size: clamp(2.2rem, 10vw, 4.5rem); font-weight: 800; }
+.urgent-sub { font-size: clamp(1.1rem, 4.5vw, 1.8rem); font-weight: 700; opacity: .9; }
+@keyframes urgent-ripple { 0% { transform: scale(.6); opacity: 0; } 40% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.urgent-ripple { animation: urgent-ripple .5s ease; }
+
 
