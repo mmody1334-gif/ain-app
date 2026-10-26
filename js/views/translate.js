@@ -162,6 +162,7 @@ export function createTranslateView(app) {
     for (const e of out.events) {
       if (!e.sign) continue;                // أشكال جاهزة غير مربوطة بكلمة لا تُنطق هنا
       words.push({ text: e.sign.word, id: e.sign.id });
+      app.emit('recognized', e.sign);
       bigEl.textContent = e.sign.word;
       bigEl.animate([{ transform: 'scale(.8)', opacity: 0.3 }, { transform: 'scale(1)', opacity: 1 }], { duration: 220 });
 
