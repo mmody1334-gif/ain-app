@@ -1,0 +1,33 @@
+// تطبيق أندرويد «حذيفة»: نافذة Trusted Web Activity تفتح الموقع في كروم بملء الشاشة،
+// فيعمل كل شيء كما في المتصفح (الكاميرا، النطق، التعرّف على الكلام، العمل بلا إنترنت)
+// ويتحدّث تلقائياً مع كل تحديث للموقع — بلا إعادة بناء الـ APK.
+plugins { id 'com.android.application' }
+
+def vcode = (System.getenv('VERSION_CODE') ?: '1') as int
+
+android {
+    namespace 'app.hudhaifa.ain'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'app.hudhaifa.ain'
+        minSdk 21
+        targetSdk 34
+        versionCode vcode
+        versionName "1.0.${vcode}"
+        resValue 'string', 'app_name', 'حذيفة'
+    }
+    signingConfigs {
+        release {
+            storeFile file(System.getenv('KEYSTORE_FILE') ?: 'release.keystore')
+            storePassword System.getenv('KEYSTORE_PASS')
+            keyAlias 'ain'
+            keyPassword System.getenv('KEYSTORE_PASS')
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.release }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+dependencies { implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0' }

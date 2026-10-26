@@ -9,3 +9,10 @@ __pycache__/
 !.dev.vars.example
 .env*
 !.env.example
+
+# مجلد النشر المؤقت
+_deploy/
+android/.gradle/
+android/app/build/
+android/build/
+*.keystore
