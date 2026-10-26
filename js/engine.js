@@ -27,6 +27,10 @@ export class Engine {
   constructor(opt = {}) {
     this.tracker = new HandTracker();
     this.tracker2 = new HandTracker();
+    // «خانتان» ثابتتان لليدين: كل يد تبقى في خانتها ما دامت قريبة من موضعها السابق،
+    // لأن MediaPipe لا يضمن ترتيب اليدين بين الإطارات.
+    this.slots = [{ tracker: this.tracker, w: null, t: -1, hand: null }, { tracker: this.tracker2, w: null, t: -1, hand: null }];
+    this.motionSlot = 0;
     this.segmenter = new MotionSegmenter();
     this.clf = null;
     this.clf2 = null;
@@ -154,6 +158,8 @@ export class Engine {
 
   reset() {
     this.tracker.reset(); this.tracker2.reset(); this.segmenter.reset(); this._resetHold();
+    if (this.slots) for (const sl of this.slots) { sl.w = null; sl.t = -1; sl.hand = null; }
+    this.motionSlot = 0;
     this.lock = null; this.motionUntil = 0; this.staticUntil = 0; this.lockOther = null; this.lockLostSince = 0;
   }
 
@@ -170,9 +176,7 @@ export class Engine {
   process(t, hands, aspect, pose = null) {
     const out = { t, hand: false, frame: null, frames: [], hands: 0, speed: 0, pred: null, shape: null, hold: null, events: [], moving: false, body: null };
     const list = normalizeHands(hands);
-    const frames = [];
-    if (list[0]) { const f = this.tracker.update(t, list[0].lm, aspect); if (f) frames.push(f); }
-    if (list[1]) { const f = this.tracker2.update(t, list[1].lm, aspect); if (f) frames.push(f); }
+    const frames = this._trackHands(t, list, aspect);
     if (!frames.length) {
       if (this.hold.key) this._resetHold();
       if (t - this.lastSeen > this.relockSec) this.lock = null;
@@ -187,8 +191,9 @@ export class Engine {
     const frame = frames[0];
     out.hand = true; out.frame = frame; out.frames = frames; out.hands = frames.length; out.speed = frame.speed;
 
-    // ----- حركة (تُقاس على اليد الأساسية) -----
-    const seg = this.enableMotion ? this.segmenter.push(frame, t) : null;
+    // ----- حركة: تُقاس على اليد التي تتحرك (لا على أول يد في قائمة الكاشف) -----
+    const mf = frame.slot === this.motionSlot ? frame : null;   // إن غابت اليد المتابَعة يُنهى مقطعها
+    const seg = this.enableMotion ? this.segmenter.push(mf, t) : null;
     out.moving = this.segmenter.isActive;
     if (seg) this._onSegment(seg, out);
 
@@ -197,6 +202,66 @@ export class Engine {
     else if (this.hold.key) { this._resetHold(); }
     out.hold = this.hold.key ? { key: this.hold.key, progress: Math.min(1, (t - this.hold.since) / this.holdSec), sign: this.hold.sign, id: this.hold.id } : null;
     return out;
+  }
+
+  /**
+   * يربط كل يد بخانتها (الأقرب لموضعها السابق، ثم تطابق اليمين/اليسار)، ويحدّث متتبّعها،
+   * ويعيد الإطارات مرتّبة: اليد المتحركة (أو المتابَعة في الحركة) أولاً.
+   */
+  _trackHands(t, list, aspect) {
+    const STALE = 0.4;
+    const live = (sl) => sl.w && t - sl.t <= STALE;
+    const assign = [-1, -1];   // خانة كل يد واردة
+    if (list.length === 1) {
+      const w = list[0].lm[0];
+      let best = -1, bestD = Infinity;
+      for (let k = 0; k < 2; k++) {
+        const sl = this.slots[k];
+        if (!live(sl)) continue;
+        const d = Math.hypot(w.x - sl.w.x, w.y - sl.w.y);
+        if (d < bestD && d < 0.3) { bestD = d; best = k; }
+      }
+      if (best < 0) {
+        // يد جديدة (أو عادت بعيداً عن موضعها): خانة غير مشغولة، ويُفضَّل تطابق اليمين/اليسار
+        const free = [0, 1].filter((k) => !live(this.slots[k]));
+        const byHand = free.find((k) => list[0].hand && this.slots[k].hand === list[0].hand);
+        best = byHand ?? (free.includes(this.motionSlot) ? this.motionSlot : free[0] ?? this.motionSlot);
+      }
+      assign[0] = best;
+    } else if (list.length >= 2) {
+      const w0 = list[0].lm[0], w1 = list[1].lm[0];
+      const d = (w, k) => (live(this.slots[k]) ? Math.hypot(w.x - this.slots[k].w.x, w.y - this.slots[k].w.y) : 0.5);
+      let straight = d(w0, 0) + d(w1, 1), crossed = d(w0, 1) + d(w1, 0);
+      if (!live(this.slots[0]) && !live(this.slots[1]) && list[0].hand && list[1].hand) {
+        straight = list[0].hand === this.slots[0].hand ? 0 : list[1].hand === this.slots[0].hand ? 1 : 0.5;
+        crossed = 1 - straight;
+      }
+      if (crossed < straight) { assign[0] = 1; assign[1] = 0; } else { assign[0] = 0; assign[1] = 1; }
+    }
+    const bySlot = [null, null];
+    for (let i = 0; i < Math.min(2, list.length); i++) {
+      const k = assign[i], sl = this.slots[k];
+      if (sl.w && t - sl.t > STALE) sl.tracker.reset();
+      const f = sl.tracker.update(t, list[i].lm, aspect);
+      sl.w = { x: list[i].lm[0].x, y: list[i].lm[0].y }; sl.t = t;
+      if (list[i].hand) sl.hand = list[i].hand;
+      if (f) { f.slot = k; bySlot[k] = f; }
+    }
+    // اليد التي تتابعها الحركة: لا نبدّلها وسط مقطع حركة؛ خارج الحركة نتبع الأسرع
+    if (!this.segmenter.isActive) {
+      let next = this.motionSlot;
+      if (!bySlot[next]) next = bySlot[0] ? 0 : bySlot[1] ? 1 : next;
+      else {
+        const other = bySlot[1 - next];
+        if (other && other.speed > Math.max(this.segmenter.vOn * 0.6, bySlot[next].speed * 1.5)) next = 1 - next;
+      }
+      if (next !== this.motionSlot) { this.segmenter.reset(); this.motionSlot = next; }
+    }
+    const frames = [];
+    if (bySlot[this.motionSlot]) frames.push(bySlot[this.motionSlot]);
+    const o = bySlot[1 - this.motionSlot];
+    if (o) frames.push(o);
+    return frames;
   }
 
   _static(t, frames, out) {
