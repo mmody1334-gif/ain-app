@@ -357,3 +357,11 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
 }
 @media (max-width: 999px) { .top:has(.org-logo:not([hidden])) #status-chip { display: none; } .org-logo { height: 30px; max-width: 72px; } }
 @media (max-width: 420px) { .brand small { display: none; } .org-logo { height: 26px; max-width: 60px; } }
+
+/* زر تحميل تطبيق أندرويد (APK) */
+.apk-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 99px; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: .82rem; text-decoration: none; white-space: nowrap; box-shadow: var(--shadow); flex: none; }
+.apk-btn svg { width: 16px; height: 16px; }
+.apk-btn:active { transform: scale(.97); }
+@media (max-width: 999px) { .top:has(.apk-btn:not([hidden])) #status-chip { display: none; } }
+@media (max-width: 380px) { .apk-btn span { display: none; } .apk-btn { padding: 8px; } }
+@media (min-width: 1000px) { .top .apk-btn { margin-inline-start: auto; } .top .apk-btn:not([hidden]) ~ #status-chip { margin-inline-start: 0; } }
