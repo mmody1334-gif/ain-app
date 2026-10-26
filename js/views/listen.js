@@ -102,6 +102,12 @@ export function createListenView(app) {
   }
 
   return {
+    /** يعرض إشارات نص قادم من مكان آخر (مثلاً رسالة في الغرفة) ويشغّلها */
+    showText(text) {
+      if (!input) return;
+      input.value = String(text || '');
+      setTimeout(() => setItems(input.value), 60);
+    },
     mount(el) {
       root = el;
       canvas = h('canvas', { style: { aspectRatio: '1 / 0.82' } });

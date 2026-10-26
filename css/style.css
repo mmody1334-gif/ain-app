@@ -291,3 +291,7 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
 .urgent-ripple { animation: urgent-ripple .5s ease; }
 
 
+
+/* شارة الرسائل غير المقروءة على تبويب الغرفة */
+#tabs button[data-badge] { position: relative; }
+#tabs button[data-badge]::after { content: attr(data-badge); position: absolute; top: 4px; inset-inline-end: 18%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--bad); color: #fff; font-size: .68rem; line-height: 18px; text-align: center; font-weight: 700; }

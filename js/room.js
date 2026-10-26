@@ -1,253 +1,327 @@
-// ربط الأجهزة بكود الغرفة — BroadcastChannel (نفس الجهاز، فوري) + مزامنة HTTPS مع غرفة سحابية
-// الغرفة وسجلها يعيشان على الخادم: كل جهاز يستقصي كل 2.5 ثانية، ورسائل ما أثناء الإغلاق تُسلَّم لاحقًا (مخزن-وأرسل)
-export const ROOM_EVENTS = { SIGN: 'sign', SOS: 'sos', MSG: 'msg', JOIN: 'join', LEAVE: 'leave', PONG: 'pong' };
+// غرفة «عين»: محادثة بين الأجهزة بكود الغرفة.
+// المسار الأساسي WebSocket فوري مع خادم الغرف (Durable Object)، وإن تعذّر نرجع للاستقصاء عبر HTTP.
+// كل رسالة تُعرض عند مرسلها فوراً بحالة «يُرسَل…» ثم «وصل ✓» عند تأكيد الخادم؛
+// وما يفشل يُحفظ في علبة صادر ويُعاد إرساله تلقائياً (بنفس المعرّف، فلا يتكرر).
+export const ROOM_EVENTS = { SIGN: 'sign', SENTENCE: 'sentence', SOS: 'sos', MSG: 'msg' };
 
-const API = 'https://ain-chat.ain-app.workers.dev';
-const POLL_MS = 2500;          // استقصاء عادي
-const BACKOFF_MS = 3000;       // مهلة إعادة المحاولة بعد فشل (تتزايد، تُصفَّر عند النجاح)
-const RETRY_CAP = 30000;
-const CONNECTED_WINDOW = 8000; // «متصل» إن نجحت محاولة خلال المدة
+const API = (typeof window !== 'undefined' && window.__AIN_CHAT_API__) || 'https://ain-chat.ain-app.workers.dev';
+const WS_API = API.replace(/^http/, 'ws');
+const POLL_MS = 3000;          // استقصاء احتياطي عندما يكون المقبس مغلقاً
+const RETRY_MIN = 1000, RETRY_CAP = 20000;
+const FETCH_TIMEOUT = 8000;
+const PING_MS = 25000;
 const MAX_OUTBOX = 60;
-const FETCH_TIMEOUT = 8000;    // أمن ضد الطلبات المعلّقة: ألغِ بعد 8 ثوانٍ
 
+const ls = {
+  get(k, d = null) { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (_) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (_) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (_) {} },
+};
 const outboxKey = (c) => `ain_outbox_${c}`;
+const seqKey = (c) => `ain_seq_${c}`;
+const newCid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 class RoomClient extends EventTarget {
   constructor() {
     super();
     this.roomCode = null;
-    this.deviceId = (() => {
-      try {
-        let id = localStorage.getItem('ain_device_id');
-        if (!id) { id = 'd' + Math.random().toString(36).slice(2, 10); localStorage.setItem('ain_device_id', id); }
-        return id;
-      } catch (_) { return 'd' + Math.random().toString(36).slice(2, 10); }
-    })();
-    this.bc = null;
-    this.active = false;      // داخل غرفة حتى leave
-    this.members = [];        // [{id, at}] من الخادم
-    this.missedCount = 0;     // رسائل وصلت والصفحة مغلقة
-    this._since = 0;          // آخر طابع رأيناه (محفوظ لكل غرفة)
-    this._lastOk = 0;         // آخر نجاح شبكة
-    this._sessionStart = Date.now();
-    this._timer = null;
-    this._delay = POLL_MS;
-    this._polls = 0;
-    this._busy = false;       // قفل علبة الصادر
-  }
-
-  get connected() { return this.active && (Date.now() - this._lastOk) < CONNECTED_WINDOW; }
-  get peerCount() {
-    if (!this.roomCode) return 0;
-    return this.members.filter((m) => m && m.id && m.id !== this.deviceId).length;
-  }
-
-  /** مشاركة غرفة — رخيصة وقابلة للتكرار (يُعاد استدعاؤها عند إعادة فتح التطبيق) */
-  async join(code) {
-    const c = String(code || '').trim().slice(0, 6).toUpperCase();
-    if (!c) return null;
-    if (this.active && this.roomCode === c) { this._announce(); return this.roomCode; }
-    if (this.active) await this.leave();
-    this.roomCode = c;
-    this.active = true;
-    this._sessionStart = Date.now();
-    this.missedCount = 0;
-    try { this._since = Number(localStorage.getItem('ain_since_' + c) || 0) || 0; } catch (_) { this._since = 0; }
-    this._connectBC();
-    // استرجاع سجل الغرفة من الخادم قبل أول استقصاء: الحكاية القديمة تبقى ظاهرة بعد أي ريفريش
-    const prevSince = this._since;
-    try {
-      const r = await this._fetch(`${API}/api/messages?code=${encodeURIComponent(c)}&since=0`);
-      const d = await r.json();
-      const msgs = (d && d.ok !== false && Array.isArray(d.msgs)) ? d.msgs : [];
-      this.missedCount = msgs.filter((m) => m && m.device !== this.deviceId && m.at > prevSince).length;
-      const lastAt = msgs.length ? msgs[msgs.length - 1].at : 0;
-      this._since = Math.max(prevSince, lastAt);
-      try { localStorage.setItem('ain_since_' + c, String(this._since)); } catch (_) {}
-      this.dispatchEvent(new CustomEvent('history', {
-        detail: { msgs, missed: this.missedCount, prevSince, sessionStart: this._sessionStart },
-      }));
-    } catch (_) {}
-
-    // قفزات فورية عند العودة للأمام أو عودة الشبكة: التاب الخلفي يخنق المؤقتات،
-    // لذا نعتمد على ردّ فعله الخاص عند الاسترجاع لتنعيم غياب الاستقصاء
-    if (!this._listeners) {
-      this._listeners = true;
-      const wake = () => {
-        if (this.active && document.visibilityState === 'visible') {
-          this._delay = POLL_MS;
-          this._schedule(0);
-          // علبة الصادر تُفرَّغ فورًا مع أول دورة
-        }
-      };
-      document.addEventListener('visibilitychange', wake);
-      window.addEventListener('focus', wake);
-      window.addEventListener('online', wake);
-      // القفل قد يعلق في حالة حاجة قديمة — تفكيك دوري احتياطي
-      setInterval(() => { if (this._busy && Date.now() - this._lastOk > CONNECTED_WINDOW * 4) this._busy = false; }, 15000);
-    }
-    // إخبار الخادم دون انتظار (يُنشئ/يُجدد الغرفة ويعيد قائمة الأجهزة)
-    this._api('/api/room', { code: c, device: this.deviceId }).then((d) => {
-      if (d && d.members) { this.members = d.members; this._announce(); }
-    }).catch(() => {});
-    this._delay = POLL_MS; this._polls = 0;
-    this._schedule(0);
-    this._announce();
-    return this.roomCode;
-  }
-
-  async leave() {
-    const code = this.roomCode;
+    this.deviceId = ls.get('ain_device_id') || (() => { const id = 'd' + Math.random().toString(36).slice(2, 10); ls.set('ain_device_id', id); return id; })();
+    this.name = ls.get('ain_display_name', '') || '';
     this.active = false;
-    clearTimeout(this._timer); this._timer = null;
-    this.roomCode = null; this.members = []; this.bc = null; this.missedCount = 0;
-    if (code) {
-      try { await this._fetch(API + '/api/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, device: this.deviceId }), keepalive: true }); } catch (_) {}
-      try { localStorage.removeItem(outboxKey(code)); } catch (_) {}
+    this.online = [];          // [{device, name, live}]
+    this.members = [];         // توافق مع الواجهة القديمة
+    this.missedCount = 0;
+    this.mode = 'off';         // off | ws | poll
+    this._seq = 0;             // آخر رقم تسلسلي رأيناه
+    this._lastAt = 0;          // للخادم القديم (بلا seq)
+    this._seen = new Set();    // seq/cid لمنع التكرار بين المقبس والاستقصاء
+    this._ws = null; this._wsTries = 0; this._wsTimer = 0; this._pingTimer = 0;
+    this._pollTimer = 0; this._lastOk = 0;
+    this._signing = { on: false, at: 0 };
+    this._wired = false;
+  }
+
+  // ---------- الحالة ----------
+  get connected() { return this.active && (this.mode === 'ws' || Date.now() - this._lastOk < POLL_MS * 3); }
+  get peers() { return this.online.filter((p) => p.device !== this.deviceId); }
+  get peerCount() { return this.peers.length; }
+
+  setName(name) {
+    this.name = String(name || '').trim().slice(0, 40);
+    ls.set('ain_display_name', this.name);
+    this._wsSend({ t: 'name', name: this.name });
+  }
+
+  nameOf(device) {
+    if (device === this.deviceId) return this.name || 'أنا';
+    const p = this.online.find((x) => x.device === device) || this.members.find((x) => x && x.id === device);
+    return (p && p.name) || '';
+  }
+
+  // ---------- الانضمام والمغادرة ----------
+  async join(code) {
+    const c = String(code || '').trim().slice(0, 8).toUpperCase();
+    if (!c) return null;
+    if (this.active && this.roomCode === c) { this._announce(); return c; }
+    if (this.active) await this.leave(true);
+    this.roomCode = c; this.active = true; this.missedCount = 0;
+    this._seen = new Set();
+    const prevSeq = Number(ls.get(seqKey(c), 0)) || 0;
+    this._wire();
+    this._announce();
+
+    // سجل الغرفة كاملاً (يبقى ظاهراً بعد أي ريفريش)، ونعدّ ما وصل منذ آخر زيارة
+    try {
+      const d = await this._get(`/api/messages?code=${encodeURIComponent(c)}&after=0&since=0&device=${this.deviceId}`);
+      const msgs = (d.msgs || []).map((m) => this._norm(m));
+      for (const m of msgs) this._mark(m);
+      this.missedCount = msgs.filter((m) => !m.mine && (m.seq ? m.seq > prevSeq : false)).length;
+      this._take(d);
+      this.dispatchEvent(new CustomEvent('history', { detail: { msgs, missed: this.missedCount, prevSeq } }));
+    } catch (_) {
+      this.dispatchEvent(new CustomEvent('history', { detail: { msgs: [], missed: 0, prevSeq, failed: true } }));
     }
-    this.dispatchEvent(new CustomEvent('status', { detail: { connected: false, peers: 0 } }));
+    if (!this.active || this.roomCode !== c) return c;
+    this._post('/api/room', { code: c, device: this.deviceId, name: this.name }).then((d) => this._take(d)).catch(() => {});
+    this._connectWS();
+    this._schedulePoll(POLL_MS);
+    return c;
   }
 
-  // == الشبكة ============================================================
-  /** fetch بمهلة صريحة: تعليق الشبكة لا يجمّد دورة الاستقصاء ولا علبة الصادر */
-  async _fetch(path, init = {}) {
-    const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT);
-    try { return await fetch(path, { ...init, signal: ctl.signal }); }
-    finally { clearTimeout(t); }
+  async leave(silent = false) {
+    const code = this.roomCode;
+    this.active = false; this.roomCode = null; this.online = []; this.members = []; this.missedCount = 0;
+    this.mode = 'off';
+    clearTimeout(this._pollTimer); clearTimeout(this._wsTimer); clearInterval(this._pingTimer);
+    if (this._ws) { try { this._ws.onclose = null; this._ws.close(1000, 'leave'); } catch (_) {} this._ws = null; }
+    if (code) {
+      this._post('/api/leave', { code, device: this.deviceId }, { keepalive: true }).catch(() => {});
+      ls.del(outboxKey(code));
+    }
+    if (!silent) this._announce();
   }
 
-  async _api(path, payload) {
-    const r = await this._fetch(API + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const d = await r.json().catch(() => null);
-    if (!r.ok || !d || d.ok === false) throw new Error((d && d.error) || ('http ' + r.status));
-    this._lastOk = Date.now();
-    return d;
+  // ---------- الإرسال ----------
+  /**
+   * يرسل رسالة ويعيدها فوراً بشكلها المحلي (حالتها pending)؛ تصل أحداث 'ack' أو 'failed' لاحقاً.
+   * type: msg {text} | sign {word,id} | sentence {text, words} | sos {message}
+   */
+  send(type, data = {}) {
+    if (!this.active || !this.roomCode) return null;
+    const rec = { cid: newCid(), type, name: this.name || undefined, ...data };
+    const local = this._norm({ ...rec, device: this.deviceId, at: Date.now() });
+    local.status = 'pending';
+    this._seen.add('c:' + rec.cid);
+    this.dispatchEvent(new CustomEvent('message', { detail: local }));
+    this._deliver(this.roomCode, rec);
+    return local;
+  }
+  sendMsg(text) { return this.send(ROOM_EVENTS.MSG, { text: String(text).slice(0, 600) }); }
+  sendSign(word, id) { return this.send(ROOM_EVENTS.SIGN, { word, id }); }
+  sendSentence(text, words = []) { return this.send(ROOM_EVENTS.SENTENCE, { text, words }); }
+  sendSOS(message) { return this.send(ROOM_EVENTS.SOS, { message }); }
+
+  /** مؤشر «يُشير الآن…» للطرف الآخر — مخنوق حتى لا يُغرق المقبس */
+  signing(on) {
+    on = !!on;
+    const now = Date.now();
+    if (on === this._signing.on && now - this._signing.at < 4000) return;
+    this._signing = { on, at: now };
+    this._wsSend({ t: 'signing', on });
   }
 
-  _schedule(ms) {
-    clearTimeout(this._timer);
+  async _deliver(code, rec) {
+    if (this._wsSend({ t: 'msg', ...rec })) return;          // التأكيد يصل عبر المقبس
+    try {
+      const d = await this._post('/api/msg', { code, device: this.deviceId, ...rec });
+      if (d && d.msg) this._onServerMsg(d.msg);
+      else this._ack(rec.cid, { seq: d && d.seq, at: d && d.lastAt });
+    } catch (_) {
+      this._queue(code, rec);
+    }
+  }
+
+  _queue(code, rec) {
+    let q = [];
+    try { q = JSON.parse(ls.get(outboxKey(code), '[]')); } catch (_) {}
+    if (!q.some((x) => x.cid === rec.cid)) q.push(rec);
+    ls.set(outboxKey(code), JSON.stringify(q.slice(-MAX_OUTBOX)));
+    this.dispatchEvent(new CustomEvent('queued', { detail: { cid: rec.cid } }));
+  }
+
+  async _flushOutbox() {
+    const code = this.roomCode;
+    if (!code || this._flushing) return;
+    let q = [];
+    try { q = JSON.parse(ls.get(outboxKey(code), '[]')); } catch (_) {}
+    if (!q.length) return;
+    this._flushing = true;
+    ls.set(outboxKey(code), '[]');
+    try {
+      for (const rec of q) {
+        if (this.roomCode !== code) break;
+        await this._deliver(code, rec);   // يعيدها للعلبة إن فشلت
+      }
+    } finally { this._flushing = false; }
+  }
+
+  // ---------- المقبس ----------
+  _connectWS() {
+    clearTimeout(this._wsTimer);
+    if (!this.active || !this.roomCode || typeof WebSocket === 'undefined') return;
+    if (this._ws && (this._ws.readyState === 0 || this._ws.readyState === 1)) return;
+    const code = this.roomCode;
+    let ws;
+    try {
+      ws = new WebSocket(`${WS_API}/api/ws?code=${encodeURIComponent(code)}&device=${encodeURIComponent(this.deviceId)}&name=${encodeURIComponent(this.name)}&after=${this._seq}`);
+    } catch (_) { this._retryWS(); return; }
+    this._ws = ws;
+    ws.onopen = () => {
+      if (this._ws !== ws) return;
+      this._wsTries = 0; this.mode = 'ws'; this._lastOk = Date.now();
+      clearInterval(this._pingTimer);
+      this._pingTimer = setInterval(() => this._wsSend({ t: 'ping' }), PING_MS);
+      this._announce();
+      this._flushOutbox();
+    };
+    ws.onmessage = (e) => {
+      if (this._ws !== ws) return;
+      this._lastOk = Date.now();
+      let d; try { d = JSON.parse(e.data); } catch (_) { return; }
+      if (d.t === 'msg' && d.m) this._onServerMsg(d.m);
+      else if ((d.t === 'hello' || d.t === 'sync') && d.msgs) { for (const m of d.msgs) this._onServerMsg(m); this._take(d); }
+      else if (d.t === 'presence') this._take(d);
+      else if (d.t === 'signing') this.dispatchEvent(new CustomEvent('signing', { detail: { device: d.device, name: d.name || this.nameOf(d.device), on: !!d.on } }));
+      else if (d.t === 'err' && d.cid) this.dispatchEvent(new CustomEvent('failed', { detail: { cid: d.cid, error: d.error } }));
+      if (d.t === 'hello') this._take(d);
+    };
+    ws.onclose = () => {
+      if (this._ws !== ws) return;
+      this._ws = null; clearInterval(this._pingTimer);
+      if (this.mode === 'ws') this.mode = 'poll';
+      this._announce();
+      this._retryWS();
+      this._schedulePoll(0);
+    };
+    ws.onerror = () => {};
+  }
+
+  _retryWS() {
     if (!this.active) return;
-    this._timer = setTimeout(() => { this._timer = null; this._poll().catch(() => {}); }, ms);
+    const ms = Math.min(RETRY_CAP, RETRY_MIN * 2 ** Math.min(5, this._wsTries++));
+    clearTimeout(this._wsTimer);
+    this._wsTimer = setTimeout(() => this._connectWS(), ms);
+  }
+
+  _wsSend(obj) {
+    const ws = this._ws;
+    if (!ws || ws.readyState !== 1) return false;
+    try { ws.send(JSON.stringify(obj)); return true; } catch (_) { return false; }
+  }
+
+  // ---------- الاستقصاء الاحتياطي ----------
+  _schedulePoll(ms) {
+    clearTimeout(this._pollTimer);
+    if (!this.active) return;
+    this._pollTimer = setTimeout(() => this._poll(), ms);
   }
 
   async _poll() {
     if (!this.active || !this.roomCode) return;
-    // كل ~5 استقصاءات: تجديد عضويتنا وترتيب الأجهزة (يبقي الغرفة حية على الخادم)
+    if (this.mode === 'ws' && this._ws && this._ws.readyState === 1) { this._schedulePoll(POLL_MS * 5); return; }
+    const code = this.roomCode;
     try {
-      if (++this._polls % 5 === 0) {
-        const d = await this._api('/api/room', { code: this.roomCode, device: this.deviceId });
-        if (d && d.members) { this.members = d.members; this._announce(); }
-      }
-      await this._flushOutbox();
-    } catch (_) { /* نتابع الاستقصاء الأساسي رغم ذلك */ }
-
-    try {
-      const r = await this._fetch(`${API}/api/messages?code=${encodeURIComponent(this.roomCode)}&since=${this._since}`);
-      const d = await r.json();
-      if (!r.ok || !d || d.ok === false) throw new Error('http ' + r.status);
-      this._lastOk = Date.now();
-      let newLast = this._since;
-      for (const m of d.msgs || []) {
-        if (m.at > newLast) newLast = m.at;
-        if (m.device === this.deviceId) continue; // رسائل جهازنا تُعرض محليًا (أو عبر Channel بين التبويبات)
-        if (m.at < this._sessionStart) this.missedCount++; // جاءت أثناء انغلاق الصفحة تقريبًا
-        this._dispatchIncoming(m);
-      }
-      if (newLast > this._since) {
-        this._since = newLast;
-        try { localStorage.setItem('ain_since_' + this.roomCode, String(this._since)); } catch (_) {}
-      }
+      const d = await this._get(`/api/messages?code=${encodeURIComponent(code)}&after=${this._seq}&since=${this._lastAt}&device=${this.deviceId}&name=${encodeURIComponent(this.name)}`);
+      if (this.roomCode !== code) return;
+      if (this.mode !== 'ws') this.mode = 'poll';
+      for (const m of d.msgs || []) this._onServerMsg(m);
+      this._take(d);
+      this._flushOutbox();
       this._announce();
-      this._delay = POLL_MS; // نجاح — صفّر التأخير
-      this._schedule(this._delay);
-    } catch (_) {
-      this._delay = Math.min(RETRY_CAP, Math.max(BACKOFF_MS, this._delay * 1.75));
-      this._announce(); // بلا نجاج — غير متصل
-      this._schedule(this._delay);
+    } catch (_) { this._announce(); }
+    this._schedulePoll(POLL_MS);
+  }
+
+  // ---------- الاستقبال ----------
+  _norm(m) {
+    const device = m.device || m.from || '';
+    return {
+      seq: m.seq || 0, cid: m.cid || null, at: m.at || Date.now(), type: m.type, device, from: device,
+      mine: device === this.deviceId, name: m.name || '',
+      data: { text: m.text, word: m.word, id: m.id, message: m.message, words: m.words },
+      status: 'sent',
+    };
+  }
+
+  _mark(m) {
+    if (m.seq) { this._seen.add('s:' + m.seq); if (m.seq > this._seq) this._seq = m.seq; }
+    if (m.cid) this._seen.add('c:' + m.cid);
+    if (m.at > this._lastAt) this._lastAt = m.at;
+    if (this.roomCode && this._seq) ls.set(seqKey(this.roomCode), String(this._seq));
+  }
+
+  _onServerMsg(raw) {
+    const m = this._norm(raw);
+    const dupSeq = m.seq && this._seen.has('s:' + m.seq);
+    const knownCid = m.cid && this._seen.has('c:' + m.cid);
+    this._mark(m);
+    if (dupSeq) return;
+    if (m.mine && knownCid) { this._ack(m.cid, { seq: m.seq, at: m.at }); return; }   // رسالتي: تأكيد وصول فقط
+    if (m.mine && !m.cid) return;   // صدى رسالتي من الخادم القديم (بلا معرّف): معروضة عندي أصلاً
+    if (!['sign', 'sentence', 'msg', 'sos'].includes(m.type)) return;
+    this.dispatchEvent(new CustomEvent('message', { detail: m }));
+  }
+
+  _ack(cid, info) { if (cid) this.dispatchEvent(new CustomEvent('ack', { detail: { cid, ...info } })); }
+
+  _take(d) {
+    if (!d) return;
+    if (Array.isArray(d.online)) {
+      const before = new Set(this.peers.map((p) => p.device));
+      this.online = d.online;
+      for (const p of this.peers) if (!before.has(p.device)) this.dispatchEvent(new CustomEvent('peer_join', { detail: p }));
     }
+    if (Array.isArray(d.members)) this.members = d.members.map((x) => (typeof x === 'string' ? { id: x } : x));
+    this._announce();
   }
 
-  /** ما فشل إرساله محفوظ محليًا ويُدفع مع أول استقصاء ناجح */
-  async _flushOutbox() {
-    if (!this.roomCode || this._busy) return;
-    const key = outboxKey(this.roomCode);
-    let q = [];
-    try { q = JSON.parse(localStorage.getItem(key) || '[]'); } catch (_) { q = []; }
-    if (!q.length) return;
-    this._busy = true;
-    try {
-      while (q.length) {
-        await this._api('/api/msg', { code: this.roomCode, device: this.deviceId, ...q[0] });
-        q.shift();
-        try { localStorage.setItem(key, JSON.stringify(q)); } catch (_) {}
-      }
-    } catch (_) {
-    } finally { this._busy = false; }
+  // ---------- الشبكة ----------
+  async _fetch(path, init = {}) {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), FETCH_TIMEOUT);
+    try { return await fetch(API + path, { ...init, signal: ctl.signal }); } finally { clearTimeout(t); }
+  }
+  async _get(path) {
+    const r = await this._fetch(path);
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || d.ok === false) throw new Error((d && d.error) || 'http ' + r.status);
+    this._lastOk = Date.now();
+    return d;
+  }
+  async _post(path, payload, extra = {}) {
+    const r = await this._fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), ...extra });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || d.ok === false) throw new Error((d && d.error) || 'http ' + r.status);
+    this._lastOk = Date.now();
+    return d;
   }
 
-  // == الإرسال ===========================================================
-  _broadcast(msg) { try { this.bc?.postMessage(msg); } catch (_) {} }
-
-  /** مسار واحد لكل الأنواع: فوري بين تبويبات الجهاز، وإرسال مخزّن على الخادم لباقي الأجهزة */
-  send(type, data = {}) {
-    if (!this.roomCode || !this.active) return;
-    const rec = { at: Date.now(), type, from: this.deviceId, data, ...data };
-    this._broadcast(rec); // مسار فوري محلي
-    this._fetch(API + '/api/msg', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: this.roomCode, device: this.deviceId, type, ...data }),
-    }).then(() => { this._lastOk = Date.now(); }).catch(() => {
-      // الشبكة غير متاحة الآن — علبة الصادر تفرغ عند أول استقصاء ناجح
-      try {
-        const k = outboxKey(this.roomCode);
-        const q = JSON.parse(localStorage.getItem(k) || '[]');
-        q.push({ type, ...data });
-        localStorage.setItem(k, JSON.stringify(q.slice(-MAX_OUTBOX)));
-      } catch (_) {}
-    });
-  }
-  sendSign(word, id) { this.send(ROOM_EVENTS.SIGN, { word, id }); }
-  sendSOS(message) { this.send(ROOM_EVENTS.SOS, { message }); }
-  sendMsg(text) { this.send(ROOM_EVENTS.MSG, { text }); }
-
-  // == استقبال ===========================================================
-  _connectBC() {
-    if (!('BroadcastChannel' in window)) return;
-    try {
-      this.bc = new BroadcastChannel('ain-room-' + this.roomCode);
-      this.bc.onmessage = (e) => {
-        const m = e.data;
-        if (!m || !m.type) return;
-        // رسائل التبويبات الأخرى لنفس جهازنا فقط تمرّ من هنا (جهاز مختلف يعبر من الخادم)
-        if (m.type === ROOM_EVENTS.JOIN) {
-          this._broadcast({ type: ROOM_EVENTS.PONG, at: Date.now(), from: this.deviceId });
-          return; // بعض تبويباتنا — لا نعرضها كرسالة
-        }
-        if (m.type === ROOM_EVENTS.LEAVE || m.type === ROOM_EVENTS.PONG) return;
-        this._emitMessage({ ...m, from: m.from || this.deviceId, device: m.from || this.deviceId });
-      };
-    } catch (_) {}
-  }
-
-  _dispatchIncoming(m) {
-    if (m.type === ROOM_EVENTS.SIGN || m.type === ROOM_EVENTS.SOS || m.type === ROOM_EVENTS.MSG) {
-      this._emitMessage(m);
-    }
-  }
-
-  _emitMessage(m) {
-    // الشكل الموحّد: {at, device, from, type, data:{…payload}}
-    const payload = { ...(m.data !== undefined ? m.data : m) };
-    for (const k of ['at', 'device', 'type', 'from', 'room', 'data']) delete payload[k];
-    const from = m.from || m.device;
-    this.dispatchEvent(new CustomEvent('message', {
-      detail: { at: m.at || Date.now(), device: from, from, type: m.type, data: payload },
-    }));
+  _wire() {
+    if (this._wired || typeof document === 'undefined') return;
+    this._wired = true;
+    const wake = () => {
+      if (!this.active || document.visibilityState !== 'visible') return;
+      this._wsTries = 0;
+      this._connectWS();
+      this._schedulePoll(0);
+    };
+    document.addEventListener('visibilitychange', wake);
+    window.addEventListener('focus', wake);
+    window.addEventListener('online', wake);
   }
 
   _announce() {
-    this.dispatchEvent(new CustomEvent('status', { detail: { connected: this.connected, peers: this.peerCount, code: this.roomCode } }));
+    this.dispatchEvent(new CustomEvent('status', { detail: { connected: this.connected, mode: this.mode, peers: this.peerCount, code: this.roomCode } }));
   }
 }
 
