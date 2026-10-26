@@ -344,6 +344,9 @@ class App {
     shade.innerHTML = '';
     shade.append(h('span.spin'), h('p', 'جارٍ التحضير…'));
     this.updateStageStatus = (m) => { const p = shade.querySelector('p'); if (p) p.textContent = m; };
+    // إعادة تمكين كل مسارات التعرّف عند كل تشغيل كاميرا: جلسة معايرة متوقِّفة
+    // (إغلاق الورقة؟ إعادة تحميل؟) كانت قد تجمّد أي تحرّك مدى الحياة
+    this.engine.enableStatic = true; this.engine.enableMotion = true; this.engine.enableShapes = true;
     const ok = await this.cam.start(this.settings.facing, (m) => this.updateStageStatus(m));
     if (!ok) { this.showCamError(); }
     this.updateStage();
