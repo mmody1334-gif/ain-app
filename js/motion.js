@@ -68,7 +68,7 @@ export class HandTracker {
 // ---------- تقسيم الحركات ----------
 export class MotionSegmenter {
   constructor(opt = {}) {
-    this.vOn = opt.vOn ?? 2.0;        // سرعة بدء الحركة (طول كف في الثانية) — كانت 3.0 ولا تُبلَغ بيد طبيعية
+    this.vOn = opt.vOn ?? 1.8;        // سرعة بدء الحركة (طول كف في الثانية) — الحركة الرأسية في الكاميرا الطولية تُقرأ %75 فقط، فالعتبة كانت تجهلها كليًا
     this.vOff = opt.vOff ?? 0.9;      // سرعة اعتبار الحركة انتهت
     this.minDur = opt.minDur ?? 0.22;
     this.maxDur = opt.maxDur ?? 2.5;
