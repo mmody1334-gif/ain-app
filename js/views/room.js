@@ -14,8 +14,25 @@ export function createRoomView(app) {
   const signingPeers = new Map(); // device → {name, until}
 
   // ---------- البيانات ----------
+  const mapUrl = (d) => `https://www.google.com/maps/search/?api=1&query=${d.lat},${d.lng}`;
+
   function upsert(m) {
     if (m.cid && byCid.has(m.cid)) { Object.assign(byCid.get(m.cid), m); return; }
+    // الموقع الحيّ: فقاعة واحدة لكل جهاز تتحدّث بدل عشرات الفقاعات
+    if (m.type === 'loc') {
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const x = msgs[i];
+        if (x.device !== m.device) continue;
+        if (x.type === 'loc' && !x.data.ended && (m.at - x.at) < 30 * 60000) {
+          const keepLatLng = m.data.ended && x.data.lat !== undefined;
+          x.data = keepLatLng ? { ...x.data, ended: true } : { ...m.data };
+          x.at = m.at; x.seq = Math.max(x.seq || 0, m.seq || 0); x.status = m.status;
+          if (m.cid) byCid.set(m.cid, x);
+          return;
+        }
+        if (x.type !== 'loc') break;
+      }
+    }
     if (m.seq && msgs.some((x) => x.seq && x.seq === m.seq)) return;
     const rec = { ...m };
     msgs.push(rec);
@@ -36,10 +53,14 @@ export function createRoomView(app) {
     const m = e.detail;
     upsert(m);
     if (!m.mine) {
-      if (m.type === ROOM_EVENTS.SOS) {
+      if (m.type === ROOM_EVENTS.SOS && m.data.test) {
+        toast('🧪 تجربة طوارئ من ' + (m.name || 'جهاز آخر'), '');
+      } else if (m.type === ROOM_EVENTS.SOS) {
         toast('🚨 طوارئ من ' + (m.name || 'جهاز آخر') + '!', 'bad');
         if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
-        app.emit('remote_sos', { message: m.data.message, name: m.name });
+        app.emit('remote_sos', { message: m.data.message, name: m.name, device: m.device, lat: m.data.lat, lng: m.data.lng, acc: m.data.acc });
+      } else if (m.type === ROOM_EVENTS.LOC) {
+        if (m.data.sos && !m.data.test) app.emit('remote_loc', { device: m.device, name: m.name, lat: m.data.lat, lng: m.data.lng, acc: m.data.acc, ended: m.data.ended });
       } else if (app.settings.roomSpeak !== false) {
         const say = m.type === 'sign' ? m.data.word : m.type === 'sentence' ? m.data.text : null;
         if (say) app.say(say);
@@ -110,12 +131,21 @@ export function createRoomView(app) {
           h('button.btn.sm', { type: 'button', onclick: () => app.say(text) }, icon('speaker'), h('span', 'انطق')),
           h('button.btn.sm', { type: 'button', onclick: () => showSign(text) }, icon('eye'), h('span', 'شاهد الإشارة'))));
     } else if (kind === 'sos') {
-      body = h('div', { style: { fontWeight: '700' } }, '🚨 ' + (d.message || 'استغاثة'));
+      body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+        h('div', { style: { fontWeight: '700' } }, (d.test ? '🧪 تجربة طوارئ: ' : '🚨 ') + (d.message || 'استغاثة')),
+        d.lat !== undefined ? h('a.btn.sm', { href: mapUrl(d), target: '_blank', rel: 'noopener', style: { textDecoration: 'none', alignSelf: 'flex-start' } }, '📍 افتح الموقع في الخرائط') : null);
+    } else if (kind === 'loc') {
+      const age = Math.max(0, Math.round((Date.now() - m.at) / 60000));
+      const title = d.ended ? '📍 آخر موقع (انتهى الإنذار)' : d.sos ? (d.test ? '📍 موقع (تجربة طوارئ) — يتحدّث مباشرة' : '📍 موقع حيّ أثناء الطوارئ') : '📍 موقع مُشارَك';
+      body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+        h('div', { style: { fontWeight: '700' } }, title),
+        d.lat !== undefined ? h('div.small.muted', `دقة ±${Math.round(d.acc || 0)} م · ${age ? 'منذ ' + age + ' د' : 'الآن'}`) : null,
+        d.lat !== undefined ? h('a.btn.sm', { href: mapUrl(d), target: '_blank', rel: 'noopener', style: { textDecoration: 'none', alignSelf: 'flex-start' } }, 'افتح في الخرائط') : null);
     } else {
       body = h('div', { style: { whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, String(d.text || ''));
     }
     const tick = !mine ? '' : m.status === 'pending' ? ' ⏳' : m.status === 'queued' ? ' ⏸ ستُرسل عند الاتصال' : m.status === 'failed' ? ' ⚠ لم تُرسل' : ' ✓';
-    const bg = kind === 'sos' ? 'var(--bad-soft)' : (kind === 'sign' || kind === 'sentence') ? 'var(--amber-soft)' : mine ? 'var(--accent-soft)' : 'var(--surface2)';
+    const bg = kind === 'sos' || (kind === 'loc' && d.sos && !d.ended && !d.test) ? 'var(--bad-soft)' : (kind === 'sign' || kind === 'sentence') ? 'var(--amber-soft)' : mine ? 'var(--accent-soft)' : 'var(--surface2)';
     return h('div', {
       style: {
         alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '82%', padding: '8px 12px', borderRadius: mine ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
@@ -225,6 +255,7 @@ export function createRoomView(app) {
         h('label.field', h('span.muted.small', 'اسمك في المحادثة'), nameInp),
         btn('حفظ الاسم', { cls: 'sm', onclick: () => { room.setName(nameInp.value); toast('حُفظ الاسم', 'ok'); renderHead(); } }),
         h('label.switch', h('span', 'انطق الإشارات والجمل الواردة'), speak),
+        btn('📍 شارك موقعي الحالي', { cls: 'block', onclick: () => { close(); shareLocation(); } }),
         btn('مغادرة الغرفة', { cls: 'danger block', ic: 'x', onclick: async () => { close(); await room.leave(); await app.store.setMeta('last_room', null); msgs.length = 0; byCid.clear(); toast('غادرت الغرفة'); build(); } }));
     });
   }
@@ -241,6 +272,15 @@ export function createRoomView(app) {
     room.sendMsg(text);
     inputEl.value = '';
     inputEl.focus();
+  }
+
+  function shareLocation() {
+    if (!navigator.geolocation) { toast('هذا الجهاز لا يدعم تحديد الموقع', 'bad'); return; }
+    toast('جارٍ تحديد موقعك…');
+    navigator.geolocation.getCurrentPosition(
+      (p) => { room.sendLocation({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }); toast('أُرسل موقعك للغرفة ✓', 'ok'); },
+      (e) => toast(e && e.code === 1 ? 'لم يُسمح بالموقع — فعّله من إعدادات المتصفح' : 'تعذّر تحديد الموقع', 'bad'),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 });
   }
 
   function showSign(text) {

@@ -101,7 +101,7 @@ export function createCommandsView(app) {
 
   function askLocation() {
     if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition((p) => { lastPos = { lat: p.coords.latitude, lng: p.coords.longitude }; }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 600000 });
+    navigator.geolocation.getCurrentPosition((p) => { lastPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() }; }, () => {}, { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 });
   }
 
   function startSos(test = false) {
@@ -136,19 +136,70 @@ export function createCommandsView(app) {
     const vib = setInterval(() => navigator.vibrate?.([400, 200, 400]), 1200);
     const say = setInterval(() => app.say(cfg.sos.message, { rate: 0.9 }), 7000);
     sosOverlay._clear = () => { clearInterval(vib); clearInterval(say); };
-    // إرسال الطوارئ لكل الأجهزة في الغرفة
-    import('../room.js').then(({ room }) => { if (room?.roomCode) room.sendSOS(cfg.sos.message); }).catch(() => {});
     const actions = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', maxWidth: '360px' } });
     const link = (label, href) => { const a = h('a.btn', { href, style: { background: '#fff', color: '#b3170a', textDecoration: 'none', minHeight: '54px' } }, label); return a; };
-    if (links.tel) actions.append(link('اتصل الآن', links.tel));
-    actions.append(link('رسالة واتساب جاهزة', links.wa), link('رسالة نصية جاهزة', links.sms));
-    if (navigator.share) actions.append(btn('مشاركة الرسالة', { cls: 'block', onclick: () => navigator.share({ text: links.msg }).catch(() => {}) }));
+    const telA = links.tel ? link('اتصل الآن', links.tel) : null;
+    const waA = link('رسالة واتساب جاهزة', links.wa), smsA = link('رسالة نصية جاهزة', links.sms);
+    if (telA) actions.append(telA);
+    actions.append(waA, smsA);
+    if (navigator.share) actions.append(btn('مشاركة الرسالة', { cls: 'block', onclick: () => navigator.share({ text: buildSosLinks(cfg.sos, lastPos).msg }).catch(() => {}) }));
+    const locNote = h('p', { style: { fontSize: '.95rem', opacity: '.9' } }, cfg.sos.location ? '📍 جارٍ تحديد موقعك…' : '');
+    sosOverlay.insertBefore(locNote, cancel);
     sosOverlay.insertBefore(actions, cancel);
     cancel.textContent = 'إيقاف الإنذار';
+
+    // الغرفة: الطوارئ تصل فوراً (ومعها آخر موقع معروف إن وُجد)، ثم موقع حيّ يُحدَّث أثناء الإنذار
+    import('../room.js').then(({ room }) => {
+      if (!room?.roomCode) return;
+      const p0 = lastPos ? { lat: lastPos.lat, lng: lastPos.lng, acc: lastPos.acc } : {};
+      room.sendSOS(cfg.sos.message, { ...p0, test: test || undefined });
+      sosRoom = room;
+    }).catch(() => {});
+    startLiveLocation(test, (pos) => {
+      // تحديث روابط الرسائل الجاهزة لتحمل الموقع
+      const l2 = buildSosLinks(cfg.sos, pos);
+      waA.href = l2.wa; smsA.href = l2.sms; sub.textContent = l2.msg;
+      locNote.textContent = `📍 موقعك محدّد (دقة ±${Math.round(pos.acc || 0)} م)` + (sosRoom?.roomCode ? ' — يُرسل للغرفة' : '');
+    }, (err) => { locNote.textContent = err === 1 ? '📍 لم يُسمح بالموقع — فعّله من إعدادات المتصفح' : '📍 تعذّر تحديد الموقع الآن'; });
+  }
+
+  // ---------- الموقع الحيّ أثناء الطوارئ ----------
+  let sosRoom = null, geoWatch = null, lastSent = null;
+  function startLiveLocation(test, onFix, onErr) {
+    stopLiveLocation();
+    if (!cfg.sos.location || !navigator.geolocation) return;
+    const t0 = Date.now();
+    geoWatch = navigator.geolocation.watchPosition((p) => {
+      const pos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy, at: Date.now() };
+      lastPos = pos;
+      onFix?.(pos);
+      // للغرفة: أول موقع فوراً، ثم كل 20 ثانية أو عند التحرك أكثر من 25 م، لمدة 15 دقيقة على الأكثر
+      const room = sosRoom;
+      if (!room?.roomCode) return;
+      const moved = lastSent ? distM(lastSent, pos) : Infinity;
+      if (!lastSent || moved > 25 || Date.now() - lastSent.at > 20000) {
+        room.sendLocation({ lat: pos.lat, lng: pos.lng, acc: pos.acc }, { sos: true, test: test || undefined });
+        lastSent = pos;
+      }
+      if (Date.now() - t0 > 15 * 60000) stopLiveLocation();
+    }, (e) => onErr?.(e && e.code), { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 });
+  }
+  function stopLiveLocation(ended = false) {
+    if (geoWatch != null) { try { navigator.geolocation.clearWatch(geoWatch); } catch (_) {} }
+    geoWatch = null;
+    if (ended && sosRoom?.roomCode && lastSent) sosRoom.sendLocation({}, { ended: true, sos: true });
+    lastSent = null;
+  }
+  function distM(a, b) {
+    const R = 6371000, toR = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * toR, dLng = (b.lng - a.lng) * toR;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toR) * Math.cos(b.lat * toR) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
   }
 
   function closeSos() {
     clearInterval(sosTimer);
+    stopLiveLocation(true); sosRoom = null;
     siren.stop();
     sosOverlay?._clear?.();
     sosOverlay?.remove(); sosOverlay = null;

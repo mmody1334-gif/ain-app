@@ -180,11 +180,25 @@ class App {
       const p2 = document.createElement('p'); p2.style.cssText = 'font-size:1rem;opacity:.85'; p2.textContent = data?.message || '';
       const close = document.createElement('button'); close.className = 'btn'; close.style.cssText = 'background:#fff;color:#b3170a;min-height:52px;font-size:1.1rem;min-width:200px'; close.textContent = 'إغلاق';
       close.onclick = () => el.remove();
-      el.append(h1, p1, p2, close);
+      const mapA = document.createElement('a');
+      mapA.className = 'btn'; mapA.target = '_blank'; mapA.rel = 'noopener';
+      mapA.style.cssText = 'background:#fff;color:#b3170a;min-height:52px;font-size:1.1rem;min-width:200px;text-decoration:none;display:none';
+      const locP = document.createElement('p'); locP.style.cssText = 'font-size:.95rem;opacity:.9'; locP.textContent = '📍 في انتظار موقعه…';
+      const setLoc = (d) => {
+        if (d.ended) { locP.textContent = '📍 انتهى الإنذار — آخر موقع معروف أدناه'; return; }
+        if (d.lat === undefined || d.lat === null) return;
+        mapA.href = `https://www.google.com/maps/search/?api=1&query=${d.lat},${d.lng}`;
+        mapA.textContent = '📍 افتح موقعه في الخرائط'; mapA.style.display = 'inline-flex';
+        locP.textContent = `موقعه محدّد (دقة ±${Math.round(d.acc || 0)} م) ويتحدّث مباشرة`;
+      };
+      setLoc(data || {});
+      const offLoc = this.on('remote_loc', (d) => { if (!data?.device || d.device === data.device) setLoc(d); });
+      close.addEventListener('click', () => offLoc());
+      el.append(h1, p1, p2, locP, mapA, close);
       document.body.append(el);
       if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
       this.say('طوارئ! ' + (data?.name || 'جهاز آخر في الغرفة') + ' يحتاج مساعدة', { rate: 0.85 });
-      setTimeout(() => el.remove(), 20000);
+      setTimeout(() => { el.remove(); offLoc(); }, 60000);
     });
     window.__sb = this;      // للاختبار والتشخيص
   }
