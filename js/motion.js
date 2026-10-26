@@ -285,8 +285,8 @@ export function detectBuiltinMotion(seg) {
   // 2ب) تمرير مبكر: مستقيم وواضح يعمل حتى لو الأصابع غير مقروءة جيدًا (زاوية الكاميرا)
   const straightNow = net / Math.max(1e-6, L);
   if (seg.dur >= 0.2 && seg.dur <= 1.6 && straightNow >= 0.75) {
-    if (Math.abs(dx) >= 1.8 * Math.abs(dy) && Math.abs(dx) >= 0.9) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
-    if (Math.abs(dy) >= 1.8 * Math.abs(dx) && Math.abs(dy) >= 0.7) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
+    if (Math.abs(dx) >= 1.8 * Math.abs(dy) && Math.abs(dx) >= 0.75) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
+    if (Math.abs(dy) >= 1.8 * Math.abs(dx) && Math.abs(dy) >= 0.6) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
   }
 
   if (open < 2.2) return null;
@@ -307,8 +307,8 @@ export function detectBuiltinMotion(seg) {
   const straight = net / Math.max(1e-6, L);
   if (straight < 0.6 || seg.dur > 1.6) return null;
   // الحركة الأفقية أطول عادةً من العمودية في الصورة، فحدّها أكبر
-  if (Math.abs(dx) >= 1.8 * Math.abs(dy) && Math.abs(dx) >= 0.9) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
-  if (Math.abs(dy) >= 1.8 * Math.abs(dx) && Math.abs(dy) >= 0.7) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
+  if (Math.abs(dx) >= 1.8 * Math.abs(dy) && Math.abs(dx) >= 0.75) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
+  if (Math.abs(dy) >= 1.8 * Math.abs(dx) && Math.abs(dy) >= 0.6) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
   return null;
 }
 
