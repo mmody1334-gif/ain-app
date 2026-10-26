@@ -7,7 +7,13 @@ export function createRoomView(app) {
 
   const messages = []; // [{text, from, at, isSign}]
 
-  room.addEventListener('status', () => { renderStatus(); });
+  room.addEventListener('status', () => {
+    // إعادة بناء الواجهة إذا اختلفت حالة الانضمام (الإعادة-الانضمام التلقائي بعد فتح التطبيق)
+    const wantLeave = !!room.roomCode;
+    const hasLeave = [...root.querySelectorAll('button')].some((b) => (b.textContent || '').includes('مغادرة'));
+    if (wantLeave !== hasLeave) { root.innerHTML = ''; build(); return; }
+    renderStatus();
+  });
   room.addEventListener('peer_join', () => { toast('📱 جهاز جديد انضم للغرفة', 'ok'); renderStatus(); });
   // سجل محفوظ على الخادم يعود بعد أي ريفريش — بلا تنبيهات ولا منبه طوارئ
   room.addEventListener('history', (e) => {
