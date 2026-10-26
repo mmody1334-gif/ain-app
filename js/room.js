@@ -2,7 +2,7 @@
 // المسار الأساسي WebSocket فوري مع خادم الغرف (Durable Object)، وإن تعذّر نرجع للاستقصاء عبر HTTP.
 // كل رسالة تُعرض عند مرسلها فوراً بحالة «يُرسَل…» ثم «وصل ✓» عند تأكيد الخادم؛
 // وما يفشل يُحفظ في علبة صادر ويُعاد إرساله تلقائياً (بنفس المعرّف، فلا يتكرر).
-export const ROOM_EVENTS = { SIGN: 'sign', SENTENCE: 'sentence', SOS: 'sos', MSG: 'msg' };
+export const ROOM_EVENTS = { SIGN: 'sign', SENTENCE: 'sentence', SOS: 'sos', MSG: 'msg', LOC: 'loc' };
 
 const API = (typeof window !== 'undefined' && window.__AIN_CHAT_API__) || 'https://ain-chat.ain-app.workers.dev';
 const WS_API = API.replace(/^http/, 'ws');
@@ -119,7 +119,10 @@ class RoomClient extends EventTarget {
   sendMsg(text) { return this.send(ROOM_EVENTS.MSG, { text: String(text).slice(0, 600) }); }
   sendSign(word, id) { return this.send(ROOM_EVENTS.SIGN, { word, id }); }
   sendSentence(text, words = []) { return this.send(ROOM_EVENTS.SENTENCE, { text, words }); }
-  sendSOS(message) { return this.send(ROOM_EVENTS.SOS, { message }); }
+  /** extra: {lat, lng, acc, test} */
+  sendSOS(message, extra = {}) { return this.send(ROOM_EVENTS.SOS, { message, ...extra }); }
+  /** موقع حيّ: pos {lat, lng, acc}؛ opt {sos:true} أثناء الطوارئ، {ended:true} عند انتهائها */
+  sendLocation(pos, opt = {}) { return this.send(ROOM_EVENTS.LOC, { ...(pos || {}), ...opt }); }
 
   /** مؤشر «يُشير الآن…» للطرف الآخر — مخنوق حتى لا يُغرق المقبس */
   signing(on) {
@@ -248,7 +251,7 @@ class RoomClient extends EventTarget {
     return {
       seq: m.seq || 0, cid: m.cid || null, at: m.at || Date.now(), type: m.type, device, from: device,
       mine: device === this.deviceId, name: m.name || '',
-      data: { text: m.text, word: m.word, id: m.id, message: m.message, words: m.words },
+      data: { text: m.text, word: m.word, id: m.id, message: m.message, words: m.words, lat: m.lat, lng: m.lng, acc: m.acc, test: m.test, sos: m.sos, ended: m.ended },
       status: 'sent',
     };
   }
@@ -268,7 +271,7 @@ class RoomClient extends EventTarget {
     if (dupSeq) return;
     if (m.mine && knownCid) { this._ack(m.cid, { seq: m.seq, at: m.at }); return; }   // رسالتي: تأكيد وصول فقط
     if (m.mine && !m.cid) return;   // صدى رسالتي من الخادم القديم (بلا معرّف): معروضة عندي أصلاً
-    if (!['sign', 'sentence', 'msg', 'sos'].includes(m.type)) return;
+    if (!['sign', 'sentence', 'msg', 'sos', 'loc'].includes(m.type)) return;
     this.dispatchEvent(new CustomEvent('message', { detail: m }));
   }
 

@@ -18,7 +18,7 @@ const MAX_MSGS = 300;                 // سجل الغرفة
 const KEEP_MS = 30 * 86400000;        // الرسائل تبقى 30 يوماً
 const ROOM_TTL = 90 * 86400000;       // الغرفة تُمحى بعد 90 يوماً بلا نشاط
 const ONLINE_HTTP_MS = 20000;         // جهاز يستقصي عبر HTTP يُعدّ متصلاً 20 ثانية بعد آخر طلب
-const TYPES = new Set(['sign', 'sentence', 'msg', 'sos']);
+const TYPES = new Set(['sign', 'sentence', 'msg', 'sos', 'loc']);
 
 const str = (v, n) => (v === undefined || v === null ? undefined : String(v).slice(0, n));
 
@@ -31,9 +31,19 @@ function cleanMsg(body) {
   add('cid', 40); add('name', 40);
   add('text', 600); add('word', 80); add('id', 80); add('message', 300);
   if (Array.isArray(body.words)) m.words = body.words.slice(0, 30).map((w) => String(w).slice(0, 80));
+  // موقع (للطوارئ أو المشاركة اليدوية): أرقام فقط وفي نطاقها الصحيح
+  const lat = Number(body.lat), lng = Number(body.lng), acc = Number(body.acc);
+  if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
+    m.lat = Math.round(lat * 1e6) / 1e6; m.lng = Math.round(lng * 1e6) / 1e6;
+    if (Number.isFinite(acc) && acc >= 0) m.acc = Math.min(100000, Math.round(acc));
+  }
+  if (body.test === true) m.test = true;
+  if (body.sos === true) m.sos = true;
+  if (body.ended === true) m.ended = true;
   if (type === 'msg' && !m.text) return null;
   if (type === 'sign' && !m.word) return null;
   if (type === 'sentence' && !m.text) return null;
+  if (type === 'loc' && m.lat === undefined && !m.ended) return null;
   return m;
 }
 
