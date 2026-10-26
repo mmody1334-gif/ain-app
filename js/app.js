@@ -203,6 +203,16 @@ class App {
       this.say('طوارئ! ' + (data?.name || 'جهاز آخر في الغرفة') + ' يحتاج مساعدة', { rate: 0.85 });
       setTimeout(() => { el.remove(); offLoc(); }, 60000);
     });
+    // زر تحميل تطبيق أندرويد: يظهر في المتصفح فقط، لا داخل التطبيق المثبَّت
+    try {
+      const inApp = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || document.referrer.startsWith('android-app://') || navigator.standalone;
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const dl = document.getElementById('apk-dl');
+      if (dl && !inApp && !isIOS) {
+        dl.hidden = false;
+        dl.addEventListener('click', () => toast('بعد التحميل افتح الملف واسمح بالتثبيت من مصادر غير معروفة', 'ok'));
+      }
+    } catch (_) { /* لا شيء */ }
     window.__sb = this;      // للاختبار والتشخيص
   }
 
