@@ -9,6 +9,22 @@ export function createRoomView(app) {
 
   room.addEventListener('status', () => { renderStatus(); });
   room.addEventListener('peer_join', () => { toast('📱 جهاز جديد انضم للغرفة', 'ok'); renderStatus(); });
+  // سجل محفوظ على الخادم يعود بعد أي ريفريش — بلا تنبيهات ولا منبه طوارئ
+  room.addEventListener('history', (e) => {
+    const d = e.detail || {};
+    const seen = new Set(messages.map((m) => m.at));
+    for (const m of d.msgs || []) {
+      if (!(m && m.at && !seen.has(m.at))) continue;
+      seen.add(m.at);
+      const from = m.device;
+      if (m.type === ROOM_EVENTS.SOS) messages.push({ text: '🚨 ' + (m.message || 'استغاثة'), from, at: m.at });
+      else if (m.type === ROOM_EVENTS.SIGN) messages.push({ text: '🤲 ' + (m.word || ''), from, at: m.at, isSign: true });
+      else if (m.type === ROOM_EVENTS.MSG) messages.push({ text: String(m.text || ''), from, at: m.at });
+    }
+    messages.sort((a, b) => (a.at || 0) - (b.at || 0));
+    renderStatus();
+    renderMessages();
+  });
   room.addEventListener('message', (e) => {
     const msg = e.detail;
     const fromOther = msg.from && msg.from !== room.deviceId;

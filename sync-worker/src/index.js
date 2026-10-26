@@ -115,6 +115,8 @@ const CORS_ALL = CORS;
 
 export default {
   async fetch(req, env, ctx) {
+    // preflight: لا يحمل code في جسمه — يجب الردّ بـ CORS أولًا وإلا منع المتصفح كل POST
+    if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
     const url = new URL(req.url);
     if (url.pathname === '/api/ping') return json({ ok: true });
     const body = req.method === 'POST' ? await req.json().catch(() => ({})) : {};
