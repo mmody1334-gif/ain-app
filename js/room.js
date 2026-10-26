@@ -54,6 +54,21 @@ class RoomClient extends EventTarget {
     this.missedCount = 0;
     try { this._since = Number(localStorage.getItem('ain_since_' + c) || 0) || 0; } catch (_) { this._since = 0; }
     this._connectBC();
+    // استرجاع سجل الغرفة من الخادم قبل أول استقصاء: الحكاية القديمة تبقى ظاهرة بعد أي ريفريش
+    const prevSince = this._since;
+    try {
+      const r = await this._fetch(`${API}/api/messages?code=${encodeURIComponent(c)}&since=0`);
+      const d = await r.json();
+      const msgs = (d && d.ok !== false && Array.isArray(d.msgs)) ? d.msgs : [];
+      this.missedCount = msgs.filter((m) => m && m.device !== this.deviceId && m.at > prevSince).length;
+      const lastAt = msgs.length ? msgs[msgs.length - 1].at : 0;
+      this._since = Math.max(prevSince, lastAt);
+      try { localStorage.setItem('ain_since_' + c, String(this._since)); } catch (_) {}
+      this.dispatchEvent(new CustomEvent('history', {
+        detail: { msgs, missed: this.missedCount, prevSince, sessionStart: this._sessionStart },
+      }));
+    } catch (_) {}
+
     // قفزات فورية عند العودة للأمام أو عودة الشبكة: التاب الخلفي يخنق المؤقتات،
     // لذا نعتمد على ردّ فعله الخاص عند الاسترجاع لتنعيم غياب الاستقصاء
     if (!this._listeners) {
