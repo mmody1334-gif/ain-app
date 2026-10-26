@@ -295,3 +295,65 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
 /* شارة الرسائل غير المقروءة على تبويب الغرفة */
 #tabs button[data-badge] { position: relative; }
 #tabs button[data-badge]::after { content: attr(data-badge); position: absolute; top: 4px; inset-inline-end: 18%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px; background: var(--bad); color: #fff; font-size: .68rem; line-height: 18px; text-align: center; font-weight: 700; }
+
+/* ================= شعارات الجهات ================= */
+.org-logo { height: 34px; width: auto; max-width: 84px; object-fit: contain; flex: none; }
+
+/* ================= واجهة الكمبيوتر (شاشة عريضة) ================= */
+@media (min-width: 1000px) {
+  body { background: radial-gradient(1200px 500px at 50% -120px, var(--accent-soft), transparent 70%), var(--bg); }
+  #app {
+    max-width: 1320px; display: grid; height: 100%;
+    grid-template-columns: 232px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "top top" "nav main";
+  }
+  /* الترويسة: الوزارة يميناً، التطبيق في الوسط، رؤية 2040 يساراً */
+  .top {
+    grid-area: top; position: relative; display: flex; align-items: center; gap: 14px; min-height: 92px;
+    padding: 14px 28px; margin: 12px 16px 0; border-radius: 20px;
+    background: var(--surface); box-shadow: var(--shadow); border: 1px solid var(--line);
+  }
+  .top .brand { position: absolute; left: 50%; transform: translateX(-50%); flex: none; width: max-content; }
+  .top #status-chip { margin-inline-start: auto; }
+  .org-logo { height: 62px; max-width: 150px; }
+  .brand img { width: 48px; height: 48px; }
+  .brand h1 { font-size: 1.7rem; }
+  .brand small { font-size: .82rem; }
+
+  /* القائمة الجانبية بدل الشريط السفلي */
+  nav.tabs {
+    grid-area: nav; flex-direction: column; overflow-y: auto; overflow-x: hidden; gap: 4px;
+    margin: 16px 0 16px 16px; margin-inline-start: 16px; margin-inline-end: 0;
+    padding: 12px; border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--shadow);
+    align-self: start; max-height: calc(100% - 32px);
+  }
+  nav.tabs button {
+    flex-direction: row; justify-content: flex-start; gap: 12px; width: 100%; min-height: 46px;
+    padding: 10px 14px; font-size: .98rem; font-weight: 600; border-radius: 12px;
+  }
+  nav.tabs button:hover { background: var(--surface2); color: var(--ink); }
+  nav.tabs button[aria-selected="true"] { box-shadow: inset 3px 0 0 var(--accent); }
+  nav.tabs button svg { width: 22px; height: 22px; flex: none; }
+
+  main { grid-area: main; padding: 16px 28px 48px; }
+  .view { max-width: 1060px; margin-inline: auto; width: 100%; }
+  .card { padding: 20px 22px; }
+
+  /* ترجمة: الكاميرا ثابتة في عمود، والجملة والأزرار في العمود الآخر */
+  #view-translate.on { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px 22px; align-items: start; }
+  #view-translate.on > :first-child { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 0; }
+  #view-translate.on > :not(:first-child) { grid-column: 2; }
+  #view-translate .stage { max-height: 70vh; }
+
+  /* التحديات: اليوم والتقدّم في عمود، ومسار الثلاثين يوماً في الآخر */
+  #view-streak.on { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 22px; align-items: start; }
+  #view-streak.on > * { grid-column: 1; }
+  #view-streak.on > .journey-path { grid-column: 2; grid-row: 1 / span 30; position: sticky; top: 0; max-height: calc(100vh - 170px); overflow-y: auto; }
+
+  /* الغرفة: محادثة أطول */
+  #view-room .card > div[style*="overflow-y"] { height: calc(100vh - 360px) !important; }
+
+  .sos-fab { bottom: 28px; inset-inline-end: 28px; width: 62px; height: 62px; }
+}
+@media (max-width: 999px) { .top:has(.org-logo:not([hidden])) #status-chip { display: none; } .org-logo { height: 30px; max-width: 72px; } }
+@media (max-width: 420px) { .brand small { display: none; } .org-logo { height: 26px; max-width: 60px; } }
