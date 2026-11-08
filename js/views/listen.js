@@ -1,5 +1,6 @@
 // اسمع: كلام السامع (ميكروفون أو كتابة) ← نص ← إشارات مرسومة بيدٍ ثلاثية الأبعاد من نفس النقاط المسجَّلة.
-import { h, btn, icon, toast, sleep } from '../ui.js';
+// يدعم محادثة الوجه لوجه بالشاشة المنقسمة وكاشف أصوات الخطر المحيطة للصم.
+import { h, btn, icon, toast, sleep, haptic } from '../ui.js';
 import { HandView, animOf } from '../hand3d.js';
 import { matchSentence, normalizeAr } from '../arabic.js';
 import { ARABIC_RE } from '../alphabet.js';
@@ -7,6 +8,9 @@ import { describePose, describeMotion } from '../learn.js';
 
 export function createListenView(app) {
   let root, input, chipsEl, capEl, canvas, view, micBtn, rec = null, token = 0, items = [], playing = false, speed = 1, quick, desc, playBtn;
+  let f2fBtn, f2fModal = null, f2fRec = null;
+  let audioCtx = null, analyser = null, micStream = null, soundTimer = null;
+  let guardianActive = false;
 
   function themeColors() {
     const cs = getComputedStyle(document.documentElement);
@@ -50,23 +54,32 @@ export function createListenView(app) {
     else if (known) playFrom(items.findIndex(hasSpell));
   }
 
-  function stop() { token++; playing = false; view.stop(); capEl.textContent = ''; mark(-1); playBtn.firstChild && (playBtn.replaceChildren(icon('play'), h('span', 'شغّل'))); }
-
-  async function playOne(sign, label) {
-    capEl.textContent = label;
-    const anim = animOf(sign);
-    desc.textContent = sign.kind === 'motion' ? describeMotion(sign) : (sign.hands === 2 ? 'إشارة بيدين' : sign.ref ? describePose(Float32Array.from(sign.ref)) : '');
-    if (anim) {
-      if (anim.frames.length > 1) view.play(anim, { speed });
-      else view.setPose(anim.frames[0].p, anim.frames[0].off);
-      await sleep(((anim.frames.length > 1 ? (anim.dur || 1) + 0.8 : 1.25) * 1000) / speed);
-    } else await sleep(600);
+  function stop() {
+    token++;
+    playing = false;
+    if (playBtn) playBtn.replaceChildren(icon('play'), h('span', 'شغّل'));
+    capEl.textContent = '';
+    mark(-1);
   }
 
-  async function playFrom(start = 0) {
-    const my = ++token; playing = true;
-    playBtn.replaceChildren(icon('pause'), h('span', 'إيقاف'));
-    for (let i = start; i < items.length; i++) {
+  async function playOne(sign, label) {
+    const a = animOf(sign);
+    if (!a) return;
+    capEl.textContent = label;
+    desc.textContent = sign.kind === 'motion' ? describeMotion(sign) : describePose(sign.ref || sign.samples?.[0]);
+    const delay = Math.round((a.dt || 80) / speed);
+    for (const f of a.frames) {
+      view.setPose(f.p, f.off);
+      await sleep(delay);
+    }
+  }
+
+  async function playFrom(idx) {
+    stop();
+    const my = ++token;
+    playing = true;
+    playBtn.replaceChildren(icon('stop'), h('span', 'إيقاف'));
+    for (let i = idx; i < items.length; i++) {
       if (my !== token) return;
       const it = items[i];
       mark(i);
@@ -101,8 +114,137 @@ export function createListenView(app) {
     words.forEach((s) => quick.append(h('button.btn.sm', { type: 'button', onclick: () => { input.value = (input.value ? input.value + ' ' : '') + s.word; } }, s.word)));
   }
 
+  // ---------- محادثة الوجه لوجه بالشاشة المنقسمة ----------
+  function openFaceToFace() {
+    haptic('medium');
+    let partnerText = 'اضغط على الميكروفون وتحدث…';
+    let deafText = input.value || 'مرحباً، أنا أستخدم لغة الإشارة.';
+
+    f2fModal = h('div.f2f-modal',
+      // النصف العلوي: مقلوب 180 درجة للسامع المقابل
+      h('div.f2f-top',
+        h('span.pill.dim', 'واجهة الشخص المقابل 👤 (مقلوبة نحوك)'),
+        h('div.f2f-partner-text', deafText),
+        h('div.f2f-bar',
+          btn('انطق كلام الأصم 🔊', {
+            cls: 'primary',
+            ic: 'speaker',
+            onclick: () => app.say(deafText),
+          }),
+          btn('اضغط وتكلّم أنت 🎙️', {
+            cls: 'primary',
+            ic: 'mic',
+            style: { minHeight: '52px' },
+            onclick: () => {
+              if (f2fRec) { try { f2fRec.stop(); } catch (_) {} return; }
+              f2fRec = app.stt.create(app.settings.sttLang, {
+                onInterim: (t) => { partnerText = t; partnerP.textContent = t; },
+                onFinal: (t) => {
+                  partnerText = t; partnerP.textContent = t;
+                  myP.textContent = 'قال المقابل: ' + t;
+                  setItems(t);
+                },
+                onEnd: () => { f2fRec = null; },
+              });
+              try { f2fRec.start(); toast('تكلّم أنت الآن…'); } catch (_) { f2fRec = null; }
+            },
+          })
+        )
+      ),
+      // النصف السفلي: موجه للمستخدم الأصم
+      h('div.f2f-bottom',
+        h('span.pill.dim', 'واجهتك أنت 📱'),
+        h('div.f2f-my-text', partnerText),
+        h('div.row.center', { style: { gap: '6px' } },
+          ['نعم ✔', 'لا ✖', 'شكراً لك', 'بكم هذا؟', 'لحظة من فضلك'].map((w) =>
+            btn(w, {
+              cls: 'ghost sm',
+              onclick: () => {
+                deafText = w;
+                f2fModal.querySelector('.f2f-partner-text').textContent = w;
+                app.say(w);
+                haptic('light');
+              },
+            })
+          )
+        ),
+        h('div.f2f-bar',
+          btn('إنهاء محادثة الوجه لوجه ✕', {
+            cls: 'ghost block grow',
+            onclick: () => {
+              try { f2fRec?.stop(); } catch (_) {}
+              f2fModal.remove();
+              f2fModal = null;
+              toast('عُدت للوضع العادي');
+            },
+          })
+        )
+      )
+    );
+
+    const partnerP = f2fModal.querySelector('.f2f-top .f2f-partner-text');
+    const myP = f2fModal.querySelector('.f2f-bottom .f2f-my-text');
+    document.body.append(f2fModal);
+  }
+
+  // ---------- كاشف أصوات الخطر والإنذارات للصم ----------
+  async function startAcousticGuardian() {
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = audioCtx.createMediaStreamSource(micStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      src.connect(analyser);
+
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      guardianActive = true;
+      toast('حارس أصوات الخطر يعمل الآن في الخلفية ✔', 'ok');
+
+      let alertCooldown = 0;
+      soundTimer = setInterval(() => {
+        if (!guardianActive || !analyser) return;
+        analyser.getByteFrequencyData(dataArray);
+
+        const sampleRate = audioCtx.sampleRate || 44100;
+        const binSize = (sampleRate / 2) / bufferLength;
+        const startBin = Math.floor(800 / binSize);
+        const endBin = Math.floor(3000 / binSize);
+
+        let sirenEnergy = 0, totalEnergy = 0;
+        for (let i = 0; i < bufferLength; i++) {
+          totalEnergy += dataArray[i];
+          if (i >= startBin && i <= endBin) sirenEnergy += dataArray[i];
+        }
+
+        const avgLevel = totalEnergy / bufferLength;
+        const sirenRatio = totalEnergy > 0 ? sirenEnergy / totalEnergy : 0;
+        const now = Date.now();
+
+        if (now - alertCooldown > 4500 && (avgLevel > 115 || (avgLevel > 70 && sirenRatio > 0.45))) {
+          alertCooldown = now;
+          haptic([120, 60, 120, 60, 300]);
+          document.body.classList.add('danger-flash-border');
+          setTimeout(() => document.body.classList.remove('danger-flash-border'), 2500);
+          toast('🚨 رُصد صوت صفارة إنذار أو بوق سيارة عالي!', 'warn');
+        }
+      }, 180);
+    } catch (e) {
+      toast('لم نتمكن من تشغيل كاشف الأصوات', 'bad');
+    }
+  }
+
+  function stopAcousticGuardian() {
+    guardianActive = false;
+    clearInterval(soundTimer);
+    try { micStream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+    try { audioCtx?.close(); } catch (_) {}
+    document.body.classList.remove('danger-flash-border');
+    toast('تم إيقاف كاشف أصوات الخطر');
+  }
+
   return {
-    /** يعرض إشارات نص قادم من مكان آخر (مثلاً رسالة في الغرفة) ويشغّلها */
     showText(text) {
       if (!input) return;
       input.value = String(text || '');
@@ -121,14 +263,38 @@ export function createListenView(app) {
       quick = h('div.row', { style: { gap: '6px' } });
       const spd = h('div.seg', [[0.7, 'بطيء'], [1, 'عادي'], [1.5, 'سريع']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(v === 1), onclick: (e) => { speed = v; spd.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } }, l)));
       const side = h('div.seg', [[true, 'كما تراها في المرآة'], [false, 'كما يراها المقابل']].map(([v, l]) => h('button', { type: 'button', 'aria-pressed': String(v), onclick: (e) => { view.mirror = v; side.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); view.draw(); } }, l)));
+
+      f2fBtn = btn('محادثة وجهاً لوجه ⇄', {
+        cls: 'ghost',
+        ic: 'flip',
+        title: 'شاشة مقلوبة للطرف المقابل للتواصل السريع',
+        onclick: openFaceToFace,
+      });
+
+      const soundGuardianCb = h('input', {
+        type: 'checkbox',
+        checked: guardianActive,
+        onchange: (e) => {
+          if (e.target.checked) startAcousticGuardian();
+          else stopAcousticGuardian();
+        },
+      });
+
+      const cardGuardian = h('div.card',
+        h('h2', 'حارس أصوات الخطر (للصم)'),
+        h('p.sub', 'يراقب الأصوات المحيطة في الخلفية وينبهك بوميض أحمر واهتزاز متكرر عند سماع صفارات إنذار أو أصوات قوية.'),
+        h('label.switch', h('span', 'تفعيل كاشف أصوات الخطر بالمايك'), soundGuardianCb)
+      );
+
       root.append(
         h('div.card', h('h2', 'اسمع ← شاهد الإشارة'), h('p.sub', 'يتكلم السامع، فيحوّل التطبيق كلامه إلى نص ثم يرسم الإشارات المقابلة من نفس النقاط المسجّلة في قاموسك.'),
-          h('div.row', h('div.grow', input), micBtn, btn('', { ic: 'chev', cls: 'primary', title: 'اعرض', onclick: () => setItems(input.value) }))),
+          h('div.row', h('div.grow', input), micBtn, btn('', { ic: 'chev', cls: 'primary', title: 'اعرض', onclick: () => setItems(input.value) }), f2fBtn)),
         box,
         h('div.row', playBtn, h('div.grow', spd)),
         side,
         desc,
         chipsEl,
+        cardGuardian,
         h('div.card', h('h2', 'أضف كلمة من قاموسك'), quick),
       );
       view = new HandView(canvas, { mirror: true, colors: themeColors() });
@@ -143,6 +309,11 @@ export function createListenView(app) {
       if (!items.length && app.signs.length) { const s = app.signs[0]; const a = animOf(s); if (a) view.setPose(a.frames[0].p, a.frames[0].off); }
       if (app.pendingSpeech) { input.value = app.pendingSpeech; app.pendingSpeech = null; }
     },
-    hide() { stop(); try { rec?.stop(); } catch (_) { /* لا شيء */ } },
+    hide() {
+      stop();
+      try { rec?.stop(); } catch (_) { /* لا شيء */ }
+      try { f2fRec?.stop(); } catch (_) { /* لا شيء */ }
+      if (f2fModal) { f2fModal.remove(); f2fModal = null; }
+    },
   };
 }
