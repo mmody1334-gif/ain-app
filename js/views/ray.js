@@ -309,13 +309,16 @@ export function createRayView(app) {
 
     async show() {
       app.mountStage(slot);
+      app.updateStage();
       engine.start();
       engine.initDetector().catch(() => {});
 
       if (!app.cam.running) {
-        await app.cam.start('environment');
+        await app.cam.start('environment', (m) => app.updateStageStatus?.(m));
+        app.updateStage();
       } else if (app.cam.facing !== 'environment') {
-        await app.cam.start('environment');
+        await app.cam.flip();
+        app.updateStage();
       }
 
       scheduleSonar();
