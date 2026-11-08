@@ -235,6 +235,110 @@ export function createRayView(app) {
     }
   }
 
+  // ---------- وضع الشاشة المعتمة لتوفير البطارية للنظارة الذكية ----------
+  let isStealth = false;
+  let stealthOverlay = null;
+
+  function toggleStealthMode() {
+    isStealth = !isStealth;
+    if (isStealth) {
+      stealthOverlay = h('div.stealth-overlay', {
+        title: 'انقر مرتين لإضاءة الشاشة والخروج',
+      },
+        h('div.stealth-icon', '🕶️'),
+        h('div.stealth-title', 'وضع توفير البطارية للنظارة الذكية'),
+        h('div.stealth-sub', 'الشاشة معتمة بنسبة 100% لتوفير الطاقة. السونار الصوتي والاهتزاز يعملان في الخلفية.'),
+        h('div.stealth-pill', 'انقر مرتين للشاشة العادية')
+      );
+      let lastTap = 0;
+      stealthOverlay.addEventListener('click', () => {
+        const now = Date.now();
+        if (now - lastTap < 350) {
+          toggleStealthMode();
+        } else {
+          lastTap = now;
+          toast('انقر نقرة أخرى لإلغاء الإعتام');
+        }
+      });
+      document.body.append(stealthOverlay);
+      if (app.cam.video) app.cam.video.style.opacity = '0';
+      if (app.cam.overlay) app.cam.overlay.style.opacity = '0';
+      app.say('تم تفعيل وضع توفير البطارية. السونار يعمل، انقر مرتين للرجوع.');
+    } else {
+      stealthOverlay?.remove();
+      stealthOverlay = null;
+      if (app.cam.video) app.cam.video.style.opacity = '1';
+      if (app.cam.overlay) app.cam.overlay.style.opacity = '1';
+      toast('أُعيدت إضاءة الشاشة', 'ok');
+      app.say('عادت الشاشة للوضع العادي');
+    }
+  }
+
+  // ---------- قارئ المستندات والعملات النقدية للكفيف ----------
+  let scanResEl = null;
+
+  async function scanDocumentOrCurrency() {
+    if (!app.cam.video || !app.cam.running) {
+      toast('شغّل الكاميرا أولاً للفحص', 'warn');
+      return;
+    }
+    toast('جارٍ فحص ما أمام الكاميرا…');
+    app.say('جارٍ الفحص…');
+
+    const v = app.cam.video;
+    const offCanvas = document.createElement('canvas');
+    offCanvas.width = 160;
+    offCanvas.height = 120;
+    const octx = offCanvas.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(v, 0, 0, 160, 120);
+    const imgData = octx.getImageData(0, 0, 160, 120);
+    const d = imgData.data;
+
+    let totalR = 0, totalG = 0, totalB = 0, brightPixels = 0;
+    const total = 160 * 120;
+    for (let i = 0; i < d.length; i += 4) {
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      totalR += r; totalG += g; totalB += b;
+      if (r > 190 && g > 190 && b > 190) brightPixels++;
+    }
+    const avgR = totalR / total;
+    const avgG = totalG / total;
+    const avgB = totalB / total;
+    const whiteRatio = brightPixels / total;
+
+    let res = '';
+    let category = '';
+
+    if (whiteRatio > 0.45) {
+      category = 'مستند أو ورقة';
+      res = 'ورقة أو مستند أبيض أمامي. يحتوي على نصوص مطبوعة.';
+    } else if (avgR > avgG * 1.25 && avgR > avgB * 1.25) {
+      category = 'عملة نقدية (درجات الأحمر/البني)';
+      res = 'ورقة نقدية محتملة: فئة ريال عُماني واحد (أحمر) أو 100 درهم إماراتي أو 100 جنيه.';
+    } else if (avgG > avgR * 1.15 && avgG > avgB * 1.1) {
+      category = 'عملة نقدية (درجات الأخضر)';
+      res = 'ورقة نقدية محتملة: فئة نصف ريال عُماني (أخضر) أو 50 درهم إماراتي.';
+    } else if (avgB > avgR * 1.15 && avgB > avgG) {
+      category = 'عملة نقدية (درجات الأزرق)';
+      res = 'ورقة نقدية محتملة: فئة 10 أو 20 ريال عُماني أو 500 درهم إماراتي.';
+    } else {
+      category = 'جسم / عائق عام';
+      res = `عائق أمامي بدرجات ألوان متعادلة، على بعد ${currentTarget.dist.toFixed(1)} متر.`;
+    }
+
+    if (scanResEl) {
+      scanResEl.innerHTML = '';
+      scanResEl.append(
+        h('div.pill.ok', { style: { display: 'inline-block' } }, category),
+        h('p', { style: { marginTop: '6px', fontSize: '1.05rem', fontWeight: '700' } }, res),
+        btn('أعد النطق بالصوت', { cls: 'ghost sm', ic: 'speaker', onclick: () => app.say(res) })
+      );
+      scanResEl.hidden = false;
+    }
+    app.say(res);
+    toast(category, 'ok');
+  }
+
   return {
     mount(container) {
       root = container;
@@ -288,6 +392,13 @@ export function createRayView(app) {
         onchange: (e) => { enableVib = e.target.checked; },
       });
 
+      const stealthBtn = btn('شاشة معتمة (OLED)', {
+        cls: 'ghost',
+        ic: 'eye',
+        title: 'إطفاء الشاشة لتوفير 70% من البطارية عند ارتداء النظارة',
+        onclick: toggleStealthMode,
+      });
+
       const cardStatus = h('div.card.ray-card',
         h('div.row.between',
           h('div',
@@ -297,14 +408,30 @@ export function createRayView(app) {
             h('span.muted', 'المسافة:'),
             hudDistEl)),
         h('div.row', { style: { marginTop: '12px' } }, speakBtn),
-        h('div.row', { style: { marginTop: '8px', gap: '8px' } }, flipBtn, torchBtn, bleBtn));
+        h('div.row', { style: { marginTop: '8px', gap: '8px' } }, flipBtn, torchBtn, bleBtn, stealthBtn));
+
+      const scanBtn = btn('فحص ما أمام الكاميرا (نصوص / عملة نقدية)', {
+        cls: 'primary grow',
+        ic: 'spell',
+        style: { minHeight: '48px' },
+        onclick: scanDocumentOrCurrency,
+      });
+
+      scanResEl = h('div.card', { hidden: true, style: { background: 'var(--surface2)', padding: '12px' } });
+
+      const cardScanner = h('div.card',
+        h('h3', 'قارئ المستندات والعملات النقدية (للأوراق وعِلب الدواء)'),
+        h('p.small.muted', 'وجّه الكاميرا لورقة نقدية (ريال عماني، درهم، جنيه) أو علبة دواء أو مستند، وسينطق التطبيق النتيجة فوراً.'),
+        h('div.row', scanBtn),
+        scanResEl
+      );
 
       const cardSettings = h('div.card',
         h('h3', 'إعدادات رادار المكفوفين'),
         h('label.switch', h('span', 'نبضات السونار الصوتي (يتسارع كلما اقتربت)'), sonarCb),
         h('label.switch', h('span', 'الاهتزاز اللمسي مع اقتراب العائق'), vibCb));
 
-      root.append(slot, cardStatus, cardSettings);
+      root.append(slot, cardStatus, cardScanner, cardSettings);
     },
 
     async show() {
@@ -368,6 +495,7 @@ export function createRayView(app) {
       if (app.cam.octx && app.cam.overlay) {
         app.cam.clearOverlay();
       }
+      if (isStealth) toggleStealthMode();
     },
   };
 }

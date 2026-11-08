@@ -19,6 +19,7 @@ import { createDictView } from './views/dict.js';
 import { createCommandsView } from './views/commands.js';
 import { createCourseView } from './views/course.js';
 import { createRoomView } from './views/room.js';
+import { openUserGuide, checkSectionIntro } from './guides.js';
 import { createNameSignView } from './views/namesign.js';
 import { createStreakView } from './views/streak.js';
 import { room } from './room.js';
@@ -120,6 +121,8 @@ class App {
     if (vc && !vc.built) { vc.api = vc.def.make(this); vc.api.mount(vc.root); vc.built = true; }
     document.getElementById('btn-settings').append(icon('gear'));
     document.getElementById('btn-settings').onclick = () => this.openSettings();
+    const btnGuide = document.getElementById('btn-guide');
+    if (btnGuide) btnGuide.onclick = () => openUserGuide(this);
 
     // قاموس البداية: إشارات ثابتة مسجّلة + إشارات جاهزة تعمل بقواعد بلا تسجيل
     const starter = await this.loadStarter();
@@ -453,6 +456,7 @@ class App {
     } catch (err) {
       console.error('Error showing view ' + id, err);
     }
+    checkSectionIntro(this, id, v.root);
     try { history.replaceState(null, '', '#' + id); } catch (e) { /* لا شيء */ }
   }
 
