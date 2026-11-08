@@ -1,11 +1,12 @@
 // شاشة رادار وشعاع حذيفة للكفيف (Hudhaifa Assistive Sonar Ray)
 // يطلق شعاعاً افتراضياً لقراءة المسافة للجدران والعوائق مع رادار صوتي ونطق عربي فوري.
+// يدعم الاقتران اللاسلكي بالنظارة الذكية عبر Web Bluetooth (BLE).
 
 import { h, btn, icon, toast } from '../ui.js';
 import { RayEngine, formatDistanceAr } from '../depth.js';
 
 export function createRayView(app) {
-  let root, slot, hudTargetEl, hudDistEl, speakBtn, torchBtn, flipBtn;
+  let root, slot, hudTargetEl, hudDistEl, speakBtn, torchBtn, flipBtn, bleBtn;
   let sonarCb, vibCb;
   let offFrame = null;
   let engine = new RayEngine();
@@ -18,6 +19,8 @@ export function createRayView(app) {
   let enableSonar = true;
   let enableVib = true;
   let currentTarget = { dist: 2.5, label: 'مسار سالك', hitX: 0.5, hitY: 0.5 };
+  let bleDevice = null;
+  let bleChar = null;
 
   function getAudioContext() {
     if (!audioCtx) {
@@ -46,16 +49,13 @@ export function createRayView(app) {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
-    // التردد: عالي وحاد عند الاقتراب الشديد، منخفض عند البعد
-    // dist <= 0.6m -> 1250Hz, dist = 2.0m -> 600Hz, dist >= 4m -> 300Hz
     const clampedDist = Math.max(0.3, Math.min(4.5, dist));
-    const factor = (4.5 - clampedDist) / 4.2; // 0 (بعيد) إلى 1 (قريب جداً)
+    const factor = (4.5 - clampedDist) / 4.2;
     const freq = 300 + factor * factor * 1000;
 
     osc.type = factor > 0.75 ? 'sawtooth' : 'sine';
     osc.frequency.setValueAtTime(freq, t);
 
-    // توجيه الصوت للأذن اليمنى أو اليسرى حسب موقع العائق
     const panVal = Math.max(-1, Math.min(1, (panX - 0.5) * 2));
     if (pannerNode) {
       pannerNode.pan.setValueAtTime(panVal, t);
@@ -66,7 +66,7 @@ export function createRayView(app) {
       gain.connect(ctx.destination);
     }
 
-    const dur = 0.05 + (1 - factor) * 0.04; // نبضة خاطفة وسريعة
+    const dur = 0.05 + (1 - factor) * 0.04;
     const vol = 0.15 + factor * 0.25;
     gain.gain.setValueAtTime(0.001, t);
     gain.gain.linearRampToValueAtTime(vol, t + 0.01);
@@ -75,32 +75,24 @@ export function createRayView(app) {
     osc.start(t);
     osc.stop(t + dur + 0.01);
 
-    // اهتزاز الهاتف للمكفوفين
     if (enableVib && clampedDist < 2.0 && typeof navigator !== 'undefined' && navigator.vibrate) {
       const vibDur = Math.round(20 + factor * 40);
       try { navigator.vibrate(vibDur); } catch (_) {}
     }
   }
 
-  /** حلقة السونار الدورية التي يتسارع ترددها كلما اقترب العائق */
   function scheduleSonar() {
     clearTimeout(sonarTimer);
-    if (!app.cam.running) return;
+    if (!app.cam.running && !bleChar) return;
 
     const d = currentTarget.dist || 2.5;
     playSonarPing(d, currentTarget.hitX);
 
-    // فترة التكرار بين النبضات (بالمللي ثانية):
-    // < 0.6m: 90ms (تحذير سريع مستمر)
-    // 1.5m: 300ms
-    // 3.0m: 600ms
-    // > 4.0m: 900ms
     const clamped = Math.max(0.4, Math.min(4.0, d));
     const interval = Math.round(80 + Math.pow((clamped - 0.4) / 3.6, 1.4) * 850);
     sonarTimer = setTimeout(scheduleSonar, interval);
   }
 
-  /** نطق التنبيه باللغة العربية مع منع التكرار المزعج */
   function announceTarget(force = false) {
     const now = performance.now();
     const dStr = formatDistanceAr(currentTarget.dist);
@@ -120,7 +112,6 @@ export function createRayView(app) {
     }
   }
 
-  /** رسم مؤشر الشعاع والرادار الليزري على شاشة الكاميرا */
   function renderRayOverlay(ctx, w, h, target) {
     ctx.clearRect(0, 0, w, h);
 
@@ -130,7 +121,6 @@ export function createRayView(app) {
     const hitY = (target.hitY ?? 0.5) * h;
     const d = target.dist ?? 2.5;
 
-    // 1) حلقات الرادار الدائرية (مسافات 1م، 2م، 3م)
     ctx.lineWidth = 1.5;
     const rings = [
       { r: Math.min(w, h) * 0.15, label: '1م', col: 'rgba(235, 75, 55, 0.4)' },
@@ -145,7 +135,6 @@ export function createRayView(app) {
       ctx.stroke();
     }
 
-    // 2) شعاع الليزر الممتد من أسفل الكاميرا لنقطة الهدف
     const grad = ctx.createLinearGradient(cx, h, hitX, hitY);
     if (d < 1.0) {
       grad.addColorStop(0, 'rgba(255, 60, 60, 0.2)');
@@ -165,19 +154,16 @@ export function createRayView(app) {
     ctx.lineTo(hitX, hitY);
     ctx.stroke();
 
-    // 3) علامة التصويب الليزرية على الهدف (Crosshair)
     ctx.fillStyle = d < 1.0 ? '#ff3b30' : d < 2.2 ? '#f5a623' : '#30d158';
     ctx.beginPath();
     ctx.arc(hitX, hitY, d < 1.0 ? 10 : 7, 0, Math.PI * 2);
     ctx.fill();
 
-    // أقواس الاستهداف
     ctx.strokeStyle = ctx.fillStyle;
     ctx.lineWidth = 2.5;
     const boxSize = 24;
     ctx.strokeRect(hitX - boxSize / 2, hitY - boxSize / 2, boxSize, boxSize);
 
-    // بطاقة المسافة فوق الهدف مباشرة
     const labelText = `${target.label || 'عائق'}: ${d.toFixed(1)} م`;
     ctx.font = 'bold 15px sans-serif';
     ctx.textAlign = 'center';
@@ -205,6 +191,47 @@ export function createRayView(app) {
       }
     } catch (e) {
       toast('تعذّر تشغيل الكشاف');
+    }
+  }
+
+  /** الاقتران بالنظارة الذكية عبر Web Bluetooth */
+  async function connectBleGlasses() {
+    if (!navigator.bluetooth) {
+      toast('متصفحك لا يدعم Web Bluetooth (استخدم Chrome على أندرويد أو الحاسوب)');
+      return;
+    }
+    try {
+      toast('جارٍ البحث عن نظارة حذيفة…');
+      bleDevice = await navigator.bluetooth.requestDevice({
+        filters: [{ namePrefix: 'Hudhaifa' }],
+        optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb'],
+      });
+      const server = await bleDevice.gatt.connect();
+      const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+      bleChar = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+      await bleChar.startNotifications();
+      bleChar.addEventListener('characteristicvaluechanged', (e) => {
+        const val = e.target.value;
+        const distCm = val.getUint16(0, true);
+        const distM = distCm / 100;
+        currentTarget = {
+          dist: distM,
+          label: distM <= 3.8 ? 'عائق (نظارة)' : 'مسار سالك',
+          hitX: 0.5,
+          hitY: 0.5,
+        };
+        hudTargetEl.textContent = currentTarget.label;
+        hudDistEl.textContent = `${distM.toFixed(1)} م`;
+        announceTarget(false);
+      });
+      bleBtn.textContent = 'النظارة متصلة ✓';
+      bleBtn.classList.add('primary');
+      toast('تم اتصال النظارة الذكية بنجاح!');
+      scheduleSonar();
+    } catch (err) {
+      if (err.name !== 'NotFoundError') {
+        toast('تعذّر الاتصال بالنظارة');
+      }
     }
   }
 
@@ -238,6 +265,13 @@ export function createRayView(app) {
         onclick: toggleTorch,
       });
 
+      bleBtn = btn('ربط النظارة (BLE)', {
+        cls: 'ghost',
+        ic: 'share',
+        title: 'اتصال بنظارة حذيفة الذكية عبر البلوتوث',
+        onclick: connectBleGlasses,
+      });
+
       sonarCb = h('input', {
         type: 'checkbox',
         checked: enableSonar,
@@ -263,7 +297,7 @@ export function createRayView(app) {
             h('span.muted', 'المسافة:'),
             hudDistEl)),
         h('div.row', { style: { marginTop: '12px' } }, speakBtn),
-        h('div.row', { style: { marginTop: '8px', gap: '8px' } }, flipBtn, torchBtn));
+        h('div.row', { style: { marginTop: '8px', gap: '8px' } }, flipBtn, torchBtn, bleBtn));
 
       const cardSettings = h('div.card',
         h('h3', 'إعدادات رادار المكفوفين'),
@@ -278,7 +312,6 @@ export function createRayView(app) {
       engine.start();
       engine.initDetector().catch(() => {});
 
-      // تشغيل الكاميرا الخلفية تلقائياً إن كانت مغلقة أو على الأمامية
       if (!app.cam.running) {
         await app.cam.start('environment');
       } else if (app.cam.facing !== 'environment') {
@@ -290,28 +323,27 @@ export function createRayView(app) {
       offFrame = app.cam.onFrame((out, primary, t) => {
         if (!app.cam.video || !app.cam.running) return;
 
-        const res = engine.process(app.cam.video, t);
-        currentTarget = res;
+        // إذا كانت النظارة متصلة بالبلوتوث، نعتمد مسافتها الليزرية الدقيقة
+        if (!bleChar) {
+          const res = engine.process(app.cam.video, t);
+          currentTarget = res;
+          hudTargetEl.textContent = res.label || 'عائق';
+          hudDistEl.textContent = `${res.dist.toFixed(1)} م`;
+        }
 
-        // تحديث الواجهة النصية
-        hudTargetEl.textContent = res.label || 'عائق';
-        hudDistEl.textContent = `${res.dist.toFixed(1)} م`;
-
-        if (res.dist < 0.9) {
+        if (currentTarget.dist < 0.9) {
           hudDistEl.style.color = 'var(--bad)';
-        } else if (res.dist < 2.0) {
+        } else if (currentTarget.dist < 2.0) {
           hudDistEl.style.color = 'var(--amber)';
         } else {
           hudDistEl.style.color = 'var(--ok)';
         }
 
-        // رسم الشعاع على كانفاس الكاميرا
         const ov = app.cam.overlay;
         if (ov && app.cam.octx) {
-          renderRayOverlay(app.cam.octx, ov.width, ov.height, res);
+          renderRayOverlay(app.cam.octx, ov.width, ov.height, currentTarget);
         }
 
-        // نطق تلقائي عند تغيّر الحالة
         announceTarget(false);
       });
     },
