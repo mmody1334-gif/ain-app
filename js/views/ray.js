@@ -314,12 +314,22 @@ export function createRayView(app) {
       engine.initDetector().catch(() => {});
 
       if (!app.cam.running) {
-        await app.cam.start('environment', (m) => app.updateStageStatus?.(m));
-        app.updateStage();
+        try {
+          const ok = await app.startCamera();
+          if (ok && app.cam.facing !== 'environment') {
+            await app.cam.flip();
+          }
+        } catch (e) {
+          console.warn('Ray camera start:', e);
+        }
       } else if (app.cam.facing !== 'environment') {
-        await app.cam.flip();
-        app.updateStage();
+        try {
+          await app.cam.flip();
+        } catch (e) {
+          console.warn('Ray camera flip:', e);
+        }
       }
+      app.updateStage();
 
       scheduleSonar();
 

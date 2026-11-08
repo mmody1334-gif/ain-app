@@ -1,6 +1,6 @@
 // حذيفة — نقطة البداية: الخدمات المشتركة، التنقّل، مسرح الكاميرا، الإعدادات.
 
-import { h, icon, btn, toast, sheet } from './ui.js';
+import { h, icon, btn, toast, sheet, haptic } from './ui.js';
 import { Store } from './store.js';
 import { Engine } from './engine.js';
 import { CameraHub } from './camera.js';
@@ -113,6 +113,8 @@ class App {
     this.cam.pref = this.settings.detector;
     this.buildStage();
     this.buildTabs();
+    this.setupSwipeNavigation();
+    this.setupStageGestures();
     // بناء قسم «أوامر» مسبقاً حتى تكون فقاعة الطوارئ العائمة (SOS بلا كاميرا) جاهزة من أول لحظة
     const vc = this.views.commands;
     if (vc && !vc.built) { vc.api = vc.def.make(this); vc.api.mount(vc.root); vc.built = true; }
@@ -336,25 +338,121 @@ class App {
   buildTabs() {
     const nav = document.getElementById('tabs');
     for (const t of TABS) {
-      const b = h('button', { role: 'tab', 'aria-selected': 'false', 'data-tab': t.id, onclick: () => this.go(t.id) }, icon(t.ic), h('span', t.label));
+      const b = h('button', { role: 'tab', 'aria-selected': 'false', 'data-tab': t.id, onclick: () => { haptic('light'); this.go(t.id); } }, icon(t.ic), h('span', t.label));
       nav.append(b);
       this.views[t.id] = { def: t, root: document.getElementById('view-' + t.id), api: null, built: false };
     }
   }
 
+  setupSwipeNavigation() {
+    const main = document.getElementById('main');
+    if (!main) return;
+    let startX = 0, startY = 0, startTime = 0;
+    const MIN_DISTANCE = 48;
+    const MAX_OFF_AXIS = 65;
+
+    main.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      startTime = Date.now();
+    }, { passive: true });
+
+    main.addEventListener('touchend', (e) => {
+      if (e.changedTouches.length !== 1) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      const dt = Date.now() - startTime;
+      if (dt > 600) return;
+      if (Math.abs(dy) > MAX_OFF_AXIS) return;
+      if (Math.abs(dx) < MIN_DISTANCE) return;
+
+      const target = e.target;
+      if (target?.closest?.('.seg, input[type="range"], pre, code, .stage')) return;
+
+      const idx = TABS.findIndex((t) => t.id === this.current);
+      if (idx === -1) return;
+
+      // في الواجهة العربية RTL: السحب لليسار يتقدّم للقسم التالي، ولليمين يعود للقسم السابق
+      if (dx < 0 && idx < TABS.length - 1) {
+        haptic('light');
+        this.go(TABS[idx + 1].id);
+      } else if (dx > 0 && idx > 0) {
+        haptic('light');
+        this.go(TABS[idx - 1].id);
+      }
+    }, { passive: true });
+  }
+
+  setupStageGestures() {
+    if (!this.stage) return;
+    let lastTap = 0;
+    this.stage.addEventListener('touchend', async (e) => {
+      if (e.target?.closest?.('button, [data-act], a')) return;
+      const now = Date.now();
+      if (now - lastTap < 320) {
+        e.preventDefault();
+        lastTap = 0;
+        haptic('medium');
+        this.stage.classList.add('flipping');
+        setTimeout(() => this.stage.classList.remove('flipping'), 380);
+        await this.cam.flip();
+        toast(this.cam.facing === 'environment' ? 'الكاميرا الخلفية (المحيط)' : 'الكاميرا الأمامية');
+        this.updateStage();
+      } else {
+        lastTap = now;
+      }
+    });
+  }
+
   go(id) {
     if (this.current === id) return;
     const prev = this.views[this.current];
-    if (prev) { prev.api?.hide?.(); prev.root.classList.remove('on'); }
+    const prevIdx = TABS.findIndex((t) => t.id === this.current);
+    const nextIdx = TABS.findIndex((t) => t.id === id);
+    const isForward = nextIdx >= prevIdx;
+
+    if (prev) {
+      try { prev.api?.hide?.(); } catch (e) { console.error(e); }
+      if (prev.root) {
+        prev.root.classList.remove('on', 'slide-next', 'slide-prev');
+      }
+    }
+
     const v = this.views[id];
-    if (!v) return;
-    if (!v.built) { v.api = v.def.make(this); v.api.mount(v.root); v.built = true; }
+    if (!v || !v.root) return;
+
+    if (!v.built) {
+      try {
+        v.api = v.def.make(this);
+        v.api.mount(v.root);
+        v.built = true;
+      } catch (err) {
+        console.error('Failed to mount view ' + id, err);
+        toast('تعذّر فتح هذا القسم', 'bad');
+        return;
+      }
+    }
+
     this.current = id;
-    for (const b of document.querySelectorAll('#tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === id));
-    v.root.classList.add('on');
-    document.getElementById('main').scrollTo({ top: 0 });
+    for (const b of document.querySelectorAll('#tabs button')) {
+      const isSel = b.dataset.tab === id;
+      b.setAttribute('aria-selected', String(isSel));
+    }
+    const activeBtn = document.querySelector(`#tabs button[data-tab="${id}"]`);
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+
+    v.root.classList.add('on', isForward ? 'slide-next' : 'slide-prev');
+    document.getElementById('main')?.scrollTo({ top: 0, behavior: 'smooth' });
+
     if (!v.def.camera && this.cam.running) this.stopCamera();
-    v.api.show?.();
+    try {
+      v.api?.show?.();
+    } catch (err) {
+      console.error('Error showing view ' + id, err);
+    }
     try { history.replaceState(null, '', '#' + id); } catch (e) { /* لا شيء */ }
   }
 
@@ -406,6 +504,8 @@ class App {
 
   showCamError() {
     const shade = this.stage.querySelector('[data-hud="shade"]');
+    if (!shade) return;
+    shade.hidden = false;
     const e = this.cam.error;
     let msg = 'تعذّر تشغيل الكاميرا.';
     const name = e?.name || e?.message || '';
@@ -421,8 +521,11 @@ class App {
   updateStage() {
     const running = this.cam.running;
     const shade = this.stage.querySelector('[data-hud="shade"]');
-    if (running) shade.hidden = true;
-    else if (this.cam.status !== 'error' && this.cam.status !== 'loading') {
+    if (running) {
+      shade.hidden = true;
+    } else if (this.cam.status === 'error') {
+      this.showCamError();
+    } else if (this.cam.status !== 'loading') {
       shade.hidden = false;
       shade.innerHTML = '';
       shade.append(h('h2', 'الكاميرا مغلقة'), h('p', 'تعمل المعالجة كلها داخل هاتفك. لا يُرسَل أي فيديو إلى أي مكان.'),
