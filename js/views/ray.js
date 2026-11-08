@@ -427,9 +427,15 @@ export function createRayView(app) {
       );
 
       const cardSettings = h('div.card',
-        h('h3', 'إعدادات رادار المكفوفين'),
+        h('h3', 'إعدادات رادار المكفوفين والنظارة الذكية'),
         h('label.switch', h('span', 'نبضات السونار الصوتي (يتسارع كلما اقتربت)'), sonarCb),
-        h('label.switch', h('span', 'الاهتزاز اللمسي مع اقتراب العائق'), vibCb));
+        h('label.switch', h('span', 'الاهتزاز اللمسي مع اقتراب العائق'), vibCb),
+        h('div.row.between', { style: { marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border)' } },
+          h('span.small.muted', 'وثيقة المشروع، الكود، وورقة العمل الكاملة:'),
+          btn('ورقة عمل النظارة ↗', {
+            cls: 'ghost sm',
+            onclick: () => window.open('docs/smart_glasses_project_sheet.html', '_blank'),
+          })));
 
       root.append(slot, cardStatus, cardScanner, cardSettings);
     },

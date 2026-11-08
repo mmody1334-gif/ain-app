@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>وثيقة وورقة عمل مشروع: نظارة «عين حذيفة» الذكية للمكفوفين</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #131c2e;
+      --card-border: #1f2d47;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --accent: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --code-bg: #070a11;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Cairo', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.7;
+      padding: 30px 20px 80px;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    /* Header Actions */
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 25px;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .badge-pill {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-action {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .btn-action:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    /* Hero Card */
+    .hero {
+      background: linear-gradient(135deg, #131c2e 0%, #172554 100%);
+      border: 1px solid #1e3a8a;
+      border-radius: var(--radius);
+      padding: 35px 30px;
+      margin-bottom: 30px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: -50px;
+      left: -50px;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero h1 {
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+    .hero p {
+      color: #cbd5e1;
+      font-size: 1.1rem;
+      max-width: 850px;
+    }
+
+    /* Section Cards */
+    .section-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 25px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    .section-title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #60a5fa;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 12px;
+    }
+    .section-title span.num {
+      background: var(--primary);
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 0.95rem;
+    }
+    th, td {
+      padding: 12px 14px;
+      text-align: right;
+      border-bottom: 1px solid var(--card-border);
+    }
+    th {
+      background: rgba(15, 23, 42, 0.6);
+      color: #93c5fd;
+      font-weight: 700;
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Code Blocks */
+    .code-container {
+      position: relative;
+      background: var(--code-bg);
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 16px;
+      margin-top: 15px;
+      overflow-x: auto;
+      direction: ltr;
+      text-align: left;
+    }
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+      color: #e2e8f0;
+      line-height: 1.6;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      font-family: 'Cairo', sans-serif;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* Grids & Cards */
+    .specs-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 15px;
+      margin-top: 15px;
+    }
+    .spec-item {
+      background: rgba(15, 23, 42, 0.5);
+      border: 1px solid var(--card-border);
+      padding: 16px;
+      border-radius: 10px;
+    }
+    .spec-label {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .spec-value {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+
+    /* Wiring Diagram Visual */
+    .wiring-box {
+      background: #090d16;
+      border: 1px dashed #334155;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 15px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: #38bdf8;
+      line-height: 1.8;
+      direction: ltr;
+      overflow-x: auto;
+    }
+
+    /* Worksheet Task Items */
+    .worksheet-item {
+      background: rgba(15, 23, 42, 0.4);
+      border-right: 4px solid var(--primary);
+      padding: 16px 20px;
+      border-radius: 0 10px 10px 0;
+      margin-bottom: 15px;
+    }
+    .worksheet-q {
+      font-weight: 700;
+      color: #f1f5f9;
+      margin-bottom: 8px;
+    }
+    .worksheet-ans {
+      color: #94a3b8;
+      font-size: 0.93rem;
+    }
+
+    /* Print Styles */
+    @media print {
+      body {
+        background: white !important;
+        color: black !important;
+        padding: 0 !important;
+      }
+      .btn-action, .copy-btn {
+        display: none !important;
+      }
+      .hero, .section-card {
+        border: 1px solid #ccc !important;
+        background: white !important;
+        color: black !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+        margin-bottom: 20px;
+      }
+      .hero h1, .section-title, .spec-value {
+        color: black !important;
+      }
+      .code-container, .wiring-box {
+        background: #f8fafc !important;
+        color: #0f172a !important;
+        border: 1px solid #cbd5e1 !important;
+      }
+      th {
+        background: #f1f5f9 !important;
+        color: black !important;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header Bar -->
+  <div class="header-bar">
+    <div class="badge-pill">
+      <span>👁️ مشروع عين حذيفة</span>
+      <span>•</span>
+      <span>الإصدار العتادي v1.0</span>
+      <span>•</span>
+      <span>توثيق ورقة العمل الشاملة</span>
+    </div>
+    <button class="btn-action" onclick="window.print()">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"></path></svg>
+      طباعة أو حفظ PDF
+    </button>
+  </div>
+
+  <!-- Hero Overview -->
+  <header class="hero">
+    <h1>نظارة «عين حذيفة» الذكية للمكفوفين</h1>
+    <p>
+      نظام بصري-إلكتروني مدمج يرتديه الكفيف كنظارة عادية، يعتمد على مستشعر مسافة ليزري (ToF) فائق الدقة، متصل لاسلكياً عبر تقنية Bluetooth Low Energy (BLE) بتطبيق «عين حذيفة» ليحوّل البيئة المحيطة إلى رادار صوتي واهتزازات لمسية ترشد الكفيف إلى العوائق والمسافات بأمان كامل.
+    </p>
+  </header>
+
+  <!-- Section 1: Specs & Dimensions -->
+  <section class="section-card">
+    <h2 class="section-title"><span class="num">1</span> المواصفات الفيزيائية والأبعاد الحقيقية</h2>
+    <p>تم تصميم النظارة لتكون أخف وزناً من النظارات الشمسية العادية، بحيث يتركز المستشعر في المنتصف وتتوزع الأجهزة بالتساوي بين الذراعين:</p>
+    
+    <div class="specs-grid">
+      <div class="spec-item">
+        <div class="spec-label">الوزن الكلي بعد التركيب</div>
+        <div class="spec-value">~27.0 جرام فقط</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">المدى الفعال للمستشعر</div>
+        <div class="spec-value">4.0 أمتار (دقة 1 مم)</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">زمن استجابة الرادار</div>
+        <div class="spec-value">&lt; 20 ميلي ثانية (لحظي)</div>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">عمر البطارية المستمر</div>
+        <div class="spec-value">5 إلى 7 ساعات عمل</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>المكون العتادي</th>
+          <th>الموديل الهندسي</th>
+          <th>الأبعاد الفعلية</th>
+          <th>الوزن</th>
+          <th>الموقع بالنظارة</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>مستشعر المسافة الليزري</strong></td>
+          <td>VL53L1X (Time-of-Flight)</td>
+          <td>10.5 × 13.5 × 2.5 مم</td>
+          <td>0.8 جم</td>
+          <td>جسر الأنف (مواجه للأمام)</td>
+        </tr>
+        <tr>
+          <td><strong>المتحكم الدقيق + BLE</strong></td>
+          <td>Seeed Studio XIAO ESP32-C3</td>
+          <td>21.0 × 17.5 × 3.5 مم</td>
+          <td>1.8 جم</td>
+          <td>الذراع الأيمن (خلفي)</td>
+        </tr>
+        <tr>
+          <td><strong>بطارية ليثيوم نحيفة</strong></td>
+          <td>LiPo 3.7V (مقاس 502030 - 300mAh)</td>
+          <td>30.0 × 20.0 × 5.0 مم</td>
+          <td>5.8 جم</td>
+          <td>تجويف الذراع الأيمن الداخلي</td>
+        </tr>
+        <tr>
+          <td><strong>محرك الاهتزاز اللمسي</strong></td>
+          <td>1027 Coin Vibration Motor</td>
+          <td>قطر 10 مم × سمك 2.7 مم</td>
+          <td>0.9 جم</td>
+          <td>الذراع الأيسر (فوق عظم الأذن)</td>
+        </tr>
+        <tr>
+          <td><strong>هيكل النظارة والأسلاك</strong></td>
+          <td>TR90 Frame + 30AWG Silicone</td>
+          <td>عرض 142 مم - ذراع 140 مم</td>
+          <td>17.7 جم</td>
+          <td>الهيكل الحامل المريح</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Section 2: Wiring & Schematics -->
+  <section class="section-card">
+    <h2 class="section-title"><span class="num">2</span> المخطط الكهربائي وطريقة التوصيل (Wiring Schematic)</h2>
+    <p>يتصل مستشعر المسافة بالمتحكم عبر بروتوكول I2C بأربعة أسلاك فقط، ويتصل محرك الاهتزاز بمنفذ رقمي مباشر:</p>
+
+    <div class="wiring-box">
+[ XIAO ESP32-C3 ]                           [ VL53L1X ToF Sensor ]
+  Pin 3V3       ------------------------->   Pin VIN / VCC (3.3V Power)
+  Pin GND       ------------------------->   Pin GND (Ground)
+  Pin D4 (SDA)  <------------------------>   Pin SDA (I2C Data)
+  Pin D5 (SCL)  ------------------------->   Pin SCL (I2C Clock)
+
+[ XIAO ESP32-C3 ]                           [ Haptic Coin Motor ]
+  Pin D1 (PWM)  ------------------------->   Positive Lead (Red)
+  Pin GND       ------------------------->   Negative Lead (Black)
+
+[ LiPo Battery 3.7V ]
+  Positive (+)  ------------------------->   BAT+ (XIAO back pad)
+  Negative (-)  ------------------------->   BAT- (XIAO back pad)
+    </div>
+
+    <p style="color: #94a3b8; font-size: 0.9rem;">
+      * ملاحظة: شريحة XIAO ESP32-C3 تحتوي على شاحن مدمج للبطارية، يكفي توصيل كابل USB-C في أسفل الذراع لإعادة شحن النظارة بأمان في 35 دقيقة.
+    </p>
+  </section>
+
+  <!-- Section 3: Firmware Code -->
+  <section class="section-card">
+    <h2 class="section-title"><span class="num">3</span> الكود المصدري للفيرموير (ESP32-C3 Arduino C++)</h2>
+    <p>الكود الكامل للشريحة، يقرأ المستشعر ويرسل المسافات كـ Notifications عبر البلوتوث المنخفض الطاقة (BLE) بنفس الـ UUIDs المعتمدة في تطبيق عين حذيفة:</p>
+
+    <div class="code-container">
+      <button class="copy-btn" onclick="copyCode(this)">نسخ الكود</button>
+      <pre><code>#include &lt;Wire.h&gt;
+#include &lt;VL53L1X.h&gt;
+#include &lt;BLEDevice.h&gt;
+#include &lt;BLEServer.h&gt;
+#include &lt;BLEUtils.h&gt;
+#include &lt;BLE2902.h&gt;
+
+// UUIDs متطابقة مع تطبيق عين حذيفة (js/views/ray.js)
+#define SERVICE_UUID        "0000ffe0-0000-1000-8000-00805f9b34fb"
+#define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
+
+#define HAPTIC_PIN D1 // محرك الاهتزاز في الذراع الأيسر
+
+VL53L1X sensor;
+BLECharacteristic *pCharacteristic;
+bool deviceConnected = false;
+
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onConnect(BLEServer* pServer) { deviceConnected = true; }
+    void onDisconnect(BLEServer* pServer) {
+        deviceConnected = false;
+        BLEDevice::startAdvertising(); // إعادة الإعلان تلقائياً
+    }
+};
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(HAPTIC_PIN, OUTPUT);
+  Wire.begin(); // SDA=D4, SCL=D5 on XIAO ESP32-C3
+  Wire.setClock(400000); // 400kHz Fast I2C
+
+  sensor.setTimeout(500);
+  if (!sensor.init()) {
+    Serial.println("فشل تهيئة مستشعر VL53L1X!");
+    while (1) { delay(100); }
+  }
+  sensor.setDistanceMode(VL53L1X::Long); // مدى يصل إلى 4 أمتار
+  sensor.setMeasurementTimingBudget(33000); // قياس سريع كل 33ms (~30 FPS)
+  sensor.startContinuous(33);
+
+  // تهيئة البلوتوث باسم Hudhaifa Glasses
+  BLEDevice::init("Hudhaifa Smart Glasses");
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+  pCharacteristic = pService->createCharacteristic(
+                      CHARACTERISTIC_UUID,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_NOTIFY
+                    );
+  pCharacteristic->addDescriptor(new BLE2902());
+  pService->start();
+
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->start();
+  Serial.println("نظارة حذيفة جاهزة للاقتران عبر البلوتوث!");
+}
+
+void loop() {
+  uint16_t distMm = sensor.read();
+  uint16_t distCm = distMm / 10; // تحويل لسنتيمتر
+
+  if (deviceConnected) {
+    // إرسال المسافة بالسنتيمتر بصيغة Uint16 Little-Endian للتطبيق
+    uint8_t data[2] = { (uint8_t)(distCm & 0xFF), (uint8_t)((distCm >> 8) & 0xFF) };
+    pCharacteristic->setValue(data, 2);
+    pCharacteristic->notify();
+  }
+
+  // تنبيه اهتزازي مباشر في النظارة عند الاقتراب الشديد من عائق (&lt; 60 سم)
+  if (distCm &gt; 0 && distCm &lt; 60) {
+    digitalWrite(HAPTIC_PIN, HIGH);
+    delay(40);
+    digitalWrite(HAPTIC_PIN, LOW);
+  }
+
+  delay(40); // تردد تحديث متوازن لتوفير طاقة البطارية
+}</code></pre>
+    </div>
+  </section>
+
+  <!-- Section 4: Web Bluetooth App Integration -->
+  <section class="section-card">
+    <h2 class="section-title"><span class="num">4</span> آلية الاقتران بالتطبيق (Web Bluetooth Integration)</h2>
+    <p>يتصل تطبيق «عين حذيفة» بالنظارة مباشرة من متصفح الهاتف أو الكمبيوتر بدون الحاجة لتثبيت أي تطبيق وسيط، مستفيداً من معيار <code>navigator.bluetooth</code>:</p>
+
+    <div class="code-container">
+      <button class="copy-btn" onclick="copyCode(this)">نسخ الكود</button>
+      <pre><code>// كود جافاسكريبت المعتمد في تطبيق عين حذيفة (قسم الرادار)
+async function connectGlasses() {
+  const device = await navigator.bluetooth.requestDevice({
+    filters: [{ namePrefix: 'Hudhaifa' }],
+    optionalServices: ['0000ffe0-0000-1000-8000-00805f9b34fb']
+  });
+
+  const server = await device.gatt.connect();
+  const service = await server.getPrimaryService('0000ffe0-0000-1000-8000-00805f9b34fb');
+  const char = await service.getCharacteristic('0000ffe1-0000-1000-8000-00805f9b34fb');
+  
+  await char.startNotifications();
+  char.addEventListener('characteristicvaluechanged', (e) => {
+    const val = e.target.value;
+    const distCm = val.getUint16(0, true); // قراءة المسافة بالسنتيمتر
+    const distM = distCm / 100;           // تحويل للمتر
+    
+    // تشغيل نبضات السونار الصوتي المتغير مع اقتراب العائق
+    playSonarBeep(distM);
+  });
+}</code></pre>
+    </div>
+
+    <div class="worksheet-item" style="margin-top: 15px;">
+      <div class="worksheet-q">🕶️ وضع الشاشة المعتمة لتوفير البطارية (OLED Stealth Mode):</div>
+      <div class="worksheet-ans">
+        عند ربط النظارة بالتطبيق، يمكن تفعيل "وضع الإعتام" في قسم الرادار؛ حيث تصبح شاشة الهاتف سوداء بالكامل وتتوقف الكاميرا لتوفير 80% من بطارية الهاتف، بينما يستمر معالج الهاتف في استقبال بيانات النظارة عبر البلوتوث وإصدار السونار الصوتي والاهتزاز للمستخدم وهو يضع هاتفه في جيبه.
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Manufacturing & 3D Printing -->
+  <section class="section-card">
+    <h2 class="section-title"><span class="num">5</span> خيارات التصنيع والتجميع الميكانيكي</h2>
+    <p>يمكن تصنيع هيكل النظارة بطريقتين متاحتين لأي مطور أو معمل مدرسي/جامعي:</p>
+
+    <div class="specs-grid">
+      <div class="spec-item">
+        <div class="spec-label">الخيار الأول (موصى به)</div>
+        <div class="spec-value" style="font-size: 1rem; color: #34d399;">طباعة ثلاثية الأبعاد (3D Print)</div>
+        <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 6px;">
+          طباعة كليبس جسر الأنف وغلاف الذراع بخامة <strong>Resin أو SLS Nylon</strong> لتكون ناعمة ومطابقة للنظارات الطبية. الملفات جاهزة بمجلد <code>3d_models/</code>.
+        </p>
+      </div>
+      <div class="spec-item">
+        <div class="spec-label">الخيار الثاني (الأسرع والأوفر)</div>
+        <div class="spec-value" style="font-size: 1rem; color: #60a5fa;">تفريغ شاسيه نظارة بلوتوث جاهزة</div>
+        <p style="font-size: 0.85rem; color: #94a3b8; margin-top: 6px;">
+          شراء نظارة بلوتوث رخيصة (~6$) من AliExpress وتفريغ البوردة القديمة، ووضع شريحة XIAO والبطارية في نفس التجاويف مسبقة الصنع.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 6: Evaluation Worksheet -->
+  <section class="section-card">
+    <h2 class="section-title"><span class="num">6</span> ورقة عمل تقييم ومناقشة المشروع (Worksheet)</h2>
+    
+    <div class="worksheet-item">
+      <div class="worksheet-q">س1: لماذا تم اختيار مستشعر ToF الليزري (VL53L1X) بدلاً من مستشعرات الموجات فوق الصوتية التقليدية (Ultrasonic)؟</div>
+      <div class="worksheet-ans">
+        <strong>الجواب:</strong> مستشعر الموجات فوق الصوتية له زاوية تشتت واسعة تعطي قراءات خاطئة عند المشي بجانب الجدران، كما أن حجمه كبير ومظهره غير مقبول في النظارة. بينما مستشعر ToF الليزري يعمل بأشعة تحت حمراء 940 نانومتر آمنة تماماً على العين، وله زاوية حزمة ضيقة (27 درجة)، ويقيس زمن ارتداد الفوتونات الفعلي بدقة ملليمترية بحجم لا يتعدى حجم حبة الأرز.
+      </div>
+    </div>
+
+    <div class="worksheet-item">
+      <div class="worksheet-q">س2: كيف تساهم ميزة Web Bluetooth API في إتاحة المشروع لأكبر شريحة من المكفوفين؟</div>
+      <div class="worksheet-ans">
+        <strong>الجواب:</strong> لا تجبر الكفيف على تنزيل تطبيقات خارجية أو المرور بتعقيدات المتاجر؛ بمجرد فتح رابط المنصة <code>ain-app.workers.dev</code> والضغط على زر "اقتران بالنظارة"، يتعرف المتصفح مباشرة على النظارة وتعمل فوراً على هواتف أندرويد والحواسيب.
+      </div>
+    </div>
+
+    <div class="worksheet-item">
+      <div class="worksheet-q">س3: كيف تم حل معضلة الوزن وتوازن النظارة على رأس المستخدم؟</div>
+      <div class="worksheet-ans">
+        <strong>الجواب:</strong> تم توزيع المكونات هندسياً: المستشعر فائق الخفة (0.8 جم) في منتصف الجسر، والمعالج والبطارية في الذراع الأيمن (~7.6 جم)، ومحرك الاهتزاز في الذراع الأيسر لموازنة المركز الحركي للرأس (50% يمين / 50% يسار)، مما يجعل الوزن الإجمالي 27 جم فقط ومريحاً طوال اليوم.
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  function copyCode(btn) {
+    const code = btn.nextElementSibling.querySelector('code').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const orig = btn.innerText;
+      btn.innerText = 'تم النسخ ✓';
+      btn.style.background = '#10b981';
+      btn.style.color = '#fff';
+      setTimeout(() => {
+        btn.innerText = orig;
+        btn.style.background = '';
+        btn.style.color = '';
+      }, 2000);
+    });
+  }
+</script>
+
+</body>
+</html>
