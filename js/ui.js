@@ -26,6 +26,7 @@ const ICONS = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/>',
   warn: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
   cam: '<path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  radar: '<path d="M12 2a10 10 0 1010 10A10 10 0 0012 2zm0 18a8 8 0 118-8 8 8 0 01-8 8zm0-12a4 4 0 104 4 4 4 0 00-4-4z"/><path d="M12 12l6-6"/>',
   eye: '<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
   bookmark: '<path d="M7 3h10a1 1 0 011 1v17l-6-4.5L6 21V4a1 1 0 011-1z"/>',

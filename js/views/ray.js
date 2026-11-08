@@ -1,0 +1,328 @@
+// شاشة رادار وشعاع حذيفة للكفيف (Hudhaifa Assistive Sonar Ray)
+// يطلق شعاعاً افتراضياً لقراءة المسافة للجدران والعوائق مع رادار صوتي ونطق عربي فوري.
+
+import { h, btn, icon, toast } from '../ui.js';
+import { RayEngine, formatDistanceAr } from '../depth.js';
+
+export function createRayView(app) {
+  let root, slot, hudTargetEl, hudDistEl, speakBtn, torchBtn, flipBtn;
+  let sonarCb, vibCb;
+  let offFrame = null;
+  let engine = new RayEngine();
+  let audioCtx = null;
+  let pannerNode = null;
+  let sonarTimer = null;
+  let lastSpokenText = '';
+  let lastSpokenTime = 0;
+  let isTorchOn = false;
+  let enableSonar = true;
+  let enableVib = true;
+  let currentTarget = { dist: 2.5, label: 'مسار سالك', hitX: 0.5, hitY: 0.5 };
+
+  function getAudioContext() {
+    if (!audioCtx) {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+        if (audioCtx.createStereoPanner) {
+          pannerNode = audioCtx.createStereoPanner();
+          pannerNode.connect(audioCtx.destination);
+        }
+      } catch (_) {}
+    }
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  /** تشغيل نبضة سونار رادارية بتردد متدرج وانحراف استريو حسب موقع العائق */
+  function playSonarPing(dist, panX = 0.5) {
+    if (!enableSonar) return;
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    // التردد: عالي وحاد عند الاقتراب الشديد، منخفض عند البعد
+    // dist <= 0.6m -> 1250Hz, dist = 2.0m -> 600Hz, dist >= 4m -> 300Hz
+    const clampedDist = Math.max(0.3, Math.min(4.5, dist));
+    const factor = (4.5 - clampedDist) / 4.2; // 0 (بعيد) إلى 1 (قريب جداً)
+    const freq = 300 + factor * factor * 1000;
+
+    osc.type = factor > 0.75 ? 'sawtooth' : 'sine';
+    osc.frequency.setValueAtTime(freq, t);
+
+    // توجيه الصوت للأذن اليمنى أو اليسرى حسب موقع العائق
+    const panVal = Math.max(-1, Math.min(1, (panX - 0.5) * 2));
+    if (pannerNode) {
+      pannerNode.pan.setValueAtTime(panVal, t);
+      osc.connect(gain);
+      gain.connect(pannerNode);
+    } else {
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+    }
+
+    const dur = 0.05 + (1 - factor) * 0.04; // نبضة خاطفة وسريعة
+    const vol = 0.15 + factor * 0.25;
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(vol, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
+
+    // اهتزاز الهاتف للمكفوفين
+    if (enableVib && clampedDist < 2.0 && typeof navigator !== 'undefined' && navigator.vibrate) {
+      const vibDur = Math.round(20 + factor * 40);
+      try { navigator.vibrate(vibDur); } catch (_) {}
+    }
+  }
+
+  /** حلقة السونار الدورية التي يتسارع ترددها كلما اقترب العائق */
+  function scheduleSonar() {
+    clearTimeout(sonarTimer);
+    if (!app.cam.running) return;
+
+    const d = currentTarget.dist || 2.5;
+    playSonarPing(d, currentTarget.hitX);
+
+    // فترة التكرار بين النبضات (بالمللي ثانية):
+    // < 0.6m: 90ms (تحذير سريع مستمر)
+    // 1.5m: 300ms
+    // 3.0m: 600ms
+    // > 4.0m: 900ms
+    const clamped = Math.max(0.4, Math.min(4.0, d));
+    const interval = Math.round(80 + Math.pow((clamped - 0.4) / 3.6, 1.4) * 850);
+    sonarTimer = setTimeout(scheduleSonar, interval);
+  }
+
+  /** نطق التنبيه باللغة العربية مع منع التكرار المزعج */
+  function announceTarget(force = false) {
+    const now = performance.now();
+    const dStr = formatDistanceAr(currentTarget.dist);
+    const label = currentTarget.label || 'عائق';
+    let text = '';
+
+    if (label === 'مسار سالك' || currentTarget.dist >= 4.0) {
+      text = 'المسار أمامك سالك، أكثر من أربعة أمتار.';
+    } else {
+      text = `${label}، على بعد ${dStr}.`;
+    }
+
+    if (force || (text !== lastSpokenText && now - lastSpokenTime > 2600) || (now - lastSpokenTime > 6500)) {
+      lastSpokenText = text;
+      lastSpokenTime = now;
+      app.say(text);
+    }
+  }
+
+  /** رسم مؤشر الشعاع والرادار الليزري على شاشة الكاميرا */
+  function renderRayOverlay(ctx, w, h, target) {
+    ctx.clearRect(0, 0, w, h);
+
+    const cx = w * 0.5;
+    const cy = h * 0.5;
+    const hitX = (target.hitX ?? 0.5) * w;
+    const hitY = (target.hitY ?? 0.5) * h;
+    const d = target.dist ?? 2.5;
+
+    // 1) حلقات الرادار الدائرية (مسافات 1م، 2م، 3م)
+    ctx.lineWidth = 1.5;
+    const rings = [
+      { r: Math.min(w, h) * 0.15, label: '1م', col: 'rgba(235, 75, 55, 0.4)' },
+      { r: Math.min(w, h) * 0.28, label: '2م', col: 'rgba(240, 160, 40, 0.35)' },
+      { r: Math.min(w, h) * 0.42, label: '3م', col: 'rgba(50, 200, 120, 0.3)' },
+    ];
+
+    for (const rg of rings) {
+      ctx.strokeStyle = rg.col;
+      ctx.beginPath();
+      ctx.arc(cx, cy, rg.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 2) شعاع الليزر الممتد من أسفل الكاميرا لنقطة الهدف
+    const grad = ctx.createLinearGradient(cx, h, hitX, hitY);
+    if (d < 1.0) {
+      grad.addColorStop(0, 'rgba(255, 60, 60, 0.2)');
+      grad.addColorStop(1, 'rgba(255, 60, 60, 0.95)');
+    } else if (d < 2.2) {
+      grad.addColorStop(0, 'rgba(245, 170, 30, 0.2)');
+      grad.addColorStop(1, 'rgba(245, 170, 30, 0.95)');
+    } else {
+      grad.addColorStop(0, 'rgba(40, 210, 130, 0.2)');
+      grad.addColorStop(1, 'rgba(40, 210, 130, 0.9)');
+    }
+
+    ctx.lineWidth = d < 1.0 ? 4 : 2.5;
+    ctx.strokeStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(cx, h);
+    ctx.lineTo(hitX, hitY);
+    ctx.stroke();
+
+    // 3) علامة التصويب الليزرية على الهدف (Crosshair)
+    ctx.fillStyle = d < 1.0 ? '#ff3b30' : d < 2.2 ? '#f5a623' : '#30d158';
+    ctx.beginPath();
+    ctx.arc(hitX, hitY, d < 1.0 ? 10 : 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    // أقواس الاستهداف
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.lineWidth = 2.5;
+    const boxSize = 24;
+    ctx.strokeRect(hitX - boxSize / 2, hitY - boxSize / 2, boxSize, boxSize);
+
+    // بطاقة المسافة فوق الهدف مباشرة
+    const labelText = `${target.label || 'عائق'}: ${d.toFixed(1)} م`;
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    const textW = ctx.measureText(labelText).width;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillRect(hitX - textW / 2 - 8, hitY - 32, textW + 16, 24);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(labelText, hitX, hitY - 15);
+  }
+
+  async function toggleTorch() {
+    if (!app.cam.stream) return;
+    const track = app.cam.stream.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      const caps = track.getCapabilities?.();
+      if (caps && caps.torch) {
+        isTorchOn = !isTorchOn;
+        await track.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+        toast(isTorchOn ? 'تم تشغيل الكشاف' : 'تم إطفاء الكشاف');
+      } else {
+        toast('كشاف الهاتف غير مدعوم في هذا المتصفح');
+      }
+    } catch (e) {
+      toast('تعذّر تشغيل الكشاف');
+    }
+  }
+
+  return {
+    mount(container) {
+      root = container;
+      slot = h('div.view-slot');
+
+      hudTargetEl = h('div.big-label', 'جارٍ المسح…');
+      hudDistEl = h('div.big-dist', '— م');
+
+      speakBtn = btn('انطق العائق الآن', {
+        cls: 'primary big grow',
+        ic: 'speaker',
+        style: { minHeight: '56px', fontSize: '1.15rem' },
+        onclick: () => announceTarget(true),
+      });
+
+      flipBtn = btn('تبديل الكاميرا', {
+        cls: 'ghost',
+        ic: 'flip',
+        onclick: async () => {
+          await app.cam.flip();
+          toast(app.cam.facing === 'environment' ? 'الكاميرا الخلفية (المحيط)' : 'الكاميرا الأمامية');
+        },
+      });
+
+      torchBtn = btn('الكشاف', {
+        cls: 'ghost',
+        ic: 'bolt',
+        onclick: toggleTorch,
+      });
+
+      sonarCb = h('input', {
+        type: 'checkbox',
+        checked: enableSonar,
+        onchange: (e) => {
+          enableSonar = e.target.checked;
+          if (enableSonar) scheduleSonar();
+          else clearTimeout(sonarTimer);
+        },
+      });
+
+      vibCb = h('input', {
+        type: 'checkbox',
+        checked: enableVib,
+        onchange: (e) => { enableVib = e.target.checked; },
+      });
+
+      const cardStatus = h('div.card.ray-card',
+        h('div.row.between',
+          h('div',
+            h('span.muted', 'العائق المقابل:'),
+            hudTargetEl),
+          h('div', { style: { textAlign: 'left' } },
+            h('span.muted', 'المسافة:'),
+            hudDistEl)),
+        h('div.row', { style: { marginTop: '12px' } }, speakBtn),
+        h('div.row', { style: { marginTop: '8px', gap: '8px' } }, flipBtn, torchBtn));
+
+      const cardSettings = h('div.card',
+        h('h3', 'إعدادات رادار المكفوفين'),
+        h('label.switch', h('span', 'نبضات السونار الصوتي (يتسارع كلما اقتربت)'), sonarCb),
+        h('label.switch', h('span', 'الاهتزاز اللمسي مع اقتراب العائق'), vibCb));
+
+      root.append(slot, cardStatus, cardSettings);
+    },
+
+    async show() {
+      app.mountStage(slot);
+      engine.start();
+      engine.initDetector().catch(() => {});
+
+      // تشغيل الكاميرا الخلفية تلقائياً إن كانت مغلقة أو على الأمامية
+      if (!app.cam.running) {
+        await app.cam.start('environment');
+      } else if (app.cam.facing !== 'environment') {
+        await app.cam.start('environment');
+      }
+
+      scheduleSonar();
+
+      offFrame = app.cam.onFrame((out, primary, t) => {
+        if (!app.cam.video || !app.cam.running) return;
+
+        const res = engine.process(app.cam.video, t);
+        currentTarget = res;
+
+        // تحديث الواجهة النصية
+        hudTargetEl.textContent = res.label || 'عائق';
+        hudDistEl.textContent = `${res.dist.toFixed(1)} م`;
+
+        if (res.dist < 0.9) {
+          hudDistEl.style.color = 'var(--bad)';
+        } else if (res.dist < 2.0) {
+          hudDistEl.style.color = 'var(--amber)';
+        } else {
+          hudDistEl.style.color = 'var(--ok)';
+        }
+
+        // رسم الشعاع على كانفاس الكاميرا
+        const ov = app.cam.overlay;
+        if (ov && app.cam.octx) {
+          renderRayOverlay(app.cam.octx, ov.width, ov.height, res);
+        }
+
+        // نطق تلقائي عند تغيّر الحالة
+        announceTarget(false);
+      });
+    },
+
+    hide() {
+      clearTimeout(sonarTimer);
+      engine.stop();
+      if (offFrame) { offFrame(); offFrame = null; }
+      if (app.cam.octx && app.cam.overlay) {
+        app.cam.clearOverlay();
+      }
+    },
+  };
+}

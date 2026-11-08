@@ -12,6 +12,7 @@ import { setFingerCalibration } from './motion.js';
 import { runCalibration } from './calibrate.js';
 import { MODEL_VERSION } from './classifier.js';
 import { createTranslateView } from './views/translate.js';
+import { createRayView } from './views/ray.js';
 import { createListenView } from './views/listen.js';
 import { createLearnView } from './views/learn.js';
 import { createDictView } from './views/dict.js';
@@ -32,6 +33,7 @@ const AMBIGUOUS_STARTER = ['builtin_one', 'builtin_two', 'builtin_three', 'built
 
 const TABS = [
   { id: 'translate', label: 'ترجمة', ic: 'translate', make: createTranslateView, camera: true },
+  { id: 'ray', label: 'رادار', ic: 'radar', make: createRayView, camera: true },
   { id: 'listen', label: 'اسمع', ic: 'listen', make: createListenView, camera: false },
   { id: 'course', label: 'دروس', ic: 'book', make: createCourseView, camera: true },
   { id: 'learn', label: 'تعلّم', ic: 'learn', make: createLearnView, camera: true },
