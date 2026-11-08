@@ -3,6 +3,7 @@
 // للاختبار: window.__SB_MOCK__ = { detect(t) → 21 نقطة | null } يستبدل الكاميرا والكاشف.
 
 import { HAND_CONNECTIONS } from './features.js';
+import { HandSmoothFilter } from './smooth.js';
 
 const CDN_VER = '0.10.14';
 const CDN_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CDN_VER}`;
@@ -97,13 +98,14 @@ export class CameraHub {
     this.error = null;
     this.t0 = performance.now();
     this.aspect = 4 / 3;
-    this.lastLm = null; this.lastOut = null; this.lastPose = null;
+    this.lastLm = null; this.lastOut = null; this.lastPose = null; if (this.smoother) this.smoother.reset();
     this._mockT = 0;
     this.pref = 'cpu';
     this._gen = 0; this._frameReady = true; this._lastDetect = 0; this._switching = false;
     this.light = null; this._lightT = 0;
     this._lc = document.createElement('canvas'); this._lc.width = 32; this._lc.height = 32;
     this._lctx = this._lc.getContext('2d', { willReadFrequently: true });
+    this.smoother = new HandSmoothFilter();
     this.diag = { backend: '', frames: 0, hands: 0, pose: 0, errors: 0, lastError: '', rvfc: false, video: '', light: null };
   }
 
@@ -194,6 +196,7 @@ export class CameraHub {
         try { hands = this.detector.detect(this.video, t); } catch (e) { hands = null; this._onDetectError(e); }
         this.diag.frames++;
         if (hands) this.diag.hands += hands[0]?.lm ? hands.length : 1;
+        if (hands && this.smoother) hands = this.smoother.smooth(hands, t);
       }
       this.lastLm = hands;
       let pose = this.lastPose;
@@ -232,21 +235,72 @@ export class CameraHub {
     ctx.clearRect(0, 0, w, h);
     const list = hands?.[0]?.lm ? hands : (Array.isArray(hands) && hands.length === 21 ? [{ lm: hands }] : []);
     if (!list.length || !this.showSkeleton) return;
-    // الفيديو يُعرض بنمط cover: نحسب نفس التحويل
     const va = this.aspect, ca = w / h;
     let sx = w, sy = h, ox = 0, oy = 0;
     if (va > ca) { sx = h * va; ox = (w - sx) / 2; } else { sy = w / va; oy = (h - sy) / 2; }
     const X = (p) => ox + p.x * sx, Y = (p) => oy + p.y * sy;
     const ok = out && out.hold ? Math.min(1, out.hold.progress) : 0;
-    ctx.lineWidth = 3; ctx.lineCap = 'round';
+    const tips = new Set([4, 8, 12, 16, 20]);
+
     list.forEach((h, idx) => {
       const lm = h.lm;
-      ctx.strokeStyle = ok > 0 ? `rgba(60,203,142,${0.55 + 0.4 * ok})` : idx ? 'rgba(140,150,255,0.75)' : 'rgba(255,255,255,0.8)';
+      const baseColor = ok > 0
+        ? `rgba(60,203,142,${0.65 + 0.35 * ok})`
+        : idx ? 'rgba(150,155,255,0.85)' : 'rgba(255,255,255,0.9)';
+      const glowColor = ok > 0
+        ? 'rgba(60,203,142,0.6)'
+        : idx ? 'rgba(130,135,255,0.45)' : 'rgba(180,200,255,0.35)';
+
+      // 1) شبكة راحة الكف الشفافة (Palm Webbing) لمظهر ثلاثي الأبعاد أنيق
+      ctx.fillStyle = ok > 0 ? 'rgba(60,203,142,0.08)' : 'rgba(140,160,255,0.06)';
       ctx.beginPath();
-      for (const [a, b] of HAND_CONNECTIONS) { ctx.moveTo(X(lm[a]), Y(lm[a])); ctx.lineTo(X(lm[b]), Y(lm[b])); }
+      ctx.moveTo(X(lm[0]), Y(lm[0]));
+      ctx.lineTo(X(lm[5]), Y(lm[5]));
+      ctx.lineTo(X(lm[9]), Y(lm[9]));
+      ctx.lineTo(X(lm[13]), Y(lm[13]));
+      ctx.lineTo(X(lm[17]), Y(lm[17]));
+      ctx.closePath();
+      ctx.fill();
+
+      // 2) عظام الأصابع مع هالة نيون ناعمة
+      ctx.save();
+      ctx.lineWidth = 3.2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = baseColor;
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = ok > 0 ? 10 : 6;
+
+      ctx.beginPath();
+      for (const [a, b] of HAND_CONNECTIONS) {
+        ctx.moveTo(X(lm[a]), Y(lm[a]));
+        ctx.lineTo(X(lm[b]), Y(lm[b]));
+      }
       ctx.stroke();
-      ctx.fillStyle = ok > 0 ? '#3ccb8e' : idx ? '#8f8cff' : '#ffffff';
-      for (const p of lm) { ctx.beginPath(); ctx.arc(X(p), Y(p), 3.2, 0, 7); ctx.fill(); }
+      ctx.restore();
+
+      // 3) مفاصل الأصابع
+      for (let i = 0; i < lm.length; i++) {
+        const p = lm[i];
+        const px = X(p), py = Y(p);
+        if (tips.has(i)) {
+          ctx.beginPath();
+          ctx.arc(px, py, ok > 0 ? 6.5 : 5.5, 0, Math.PI * 2);
+          ctx.strokeStyle = baseColor;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+          ctx.fillStyle = ok > 0 ? '#3ccb8e' : idx ? '#b0afff' : '#ffffff';
+          ctx.fill();
+        } else {
+          ctx.beginPath();
+          ctx.arc(px, py, 2.6, 0, Math.PI * 2);
+          ctx.fillStyle = ok > 0 ? '#3ccb8e' : idx ? '#8f8cff' : '#ffffff';
+          ctx.fill();
+        }
+      }
     });
   }
 }

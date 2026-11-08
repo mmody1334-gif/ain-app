@@ -369,3 +369,47 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
 /* ---- رادار الكفيف وشعاع حذيفة ---- */
 .ray-card .big-label { font-size: 1.55rem; font-weight: 800; color: var(--ink); margin-top: 4px; }
 .ray-card .big-dist { font-size: 2rem; font-weight: 900; font-family: var(--font-title); margin-top: 2px; }
+
+/* ---- تحسينات الواجهة والمظهر الجمالي المطور ---- */
+.hud .pill {
+  background: rgba(16, 16, 28, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+}
+.holdbar { height: 6px; background: rgba(255, 255, 255, 0.12); }
+.holdbar i {
+  background: linear-gradient(90deg, #3ccb8e, #5af3b0);
+  box-shadow: 0 0 10px rgba(60, 203, 142, 0.7);
+}
+.btn {
+  transition: transform .12s cubic-bezier(.34,1.56,.64,1), background-color .15s, box-shadow .15s;
+}
+.btn:active { transform: scale(0.97); }
+.bigword {
+  text-shadow: 0 2px 20px rgba(70, 64, 212, 0.22);
+  letter-spacing: -0.5px;
+}
+.ray-card {
+  background: linear-gradient(145deg, var(--surface), var(--surface2));
+  border: 1px solid var(--line);
+  position: relative;
+  overflow: hidden;
+}
+.ray-card::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--ok));
+}
+nav.tabs button {
+  transition: background-color .18s ease, color .18s ease, transform .12s;
+}
+nav.tabs button:active { transform: scale(0.94); }
+nav.tabs button[aria-selected="true"] {
+  box-shadow: 0 2px 10px rgba(70, 64, 212, 0.16);
+}
