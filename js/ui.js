@@ -72,9 +72,26 @@ export function h(tag, props, ...kids) {
   return el;
 }
 
+/** اهتزاز لمسي تفاعلي للموبايل */
+export function haptic(type = 'light') {
+  if (typeof navigator === 'undefined' || !navigator.vibrate) return;
+  try {
+    if (type === 'light') navigator.vibrate(12);
+    else if (type === 'medium') navigator.vibrate(28);
+    else if (type === 'success') navigator.vibrate([18, 45, 24]);
+    else if (type === 'warning' || type === 'bad') navigator.vibrate([35, 60, 35]);
+    else if (Array.isArray(type)) navigator.vibrate(type);
+    else navigator.vibrate(Number(type) || 15);
+  } catch (_) {}
+}
+
 export function btn(label, opts = {}) {
   const { cls = '', ic, onclick, title, disabled } = opts;
-  const b = h('button.btn' + (cls ? '.' + cls.split(' ').join('.') : ''), { onclick, title, disabled, type: 'button' });
+  const wrappedClick = onclick ? (e) => {
+    haptic('light');
+    return onclick(e);
+  } : undefined;
+  const b = h('button.btn' + (cls ? '.' + cls.split(' ').join('.') : ''), { onclick: wrappedClick, title, disabled, type: 'button' });
   if (ic) b.append(icon(ic));
   if (label) b.append(h('span', label));
   return b;
@@ -82,6 +99,7 @@ export function btn(label, opts = {}) {
 
 let toastEl = null, toastTimer = 0;
 export function toast(msg, kind = '') {
+  haptic(kind === 'ok' ? 'success' : 'light');
   if (toastEl) toastEl.remove();
   toastEl = h('div.toast' + (kind ? '.' + kind : ''), { role: 'status' }, msg);
   document.body.append(toastEl);
