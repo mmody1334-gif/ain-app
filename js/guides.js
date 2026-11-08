@@ -175,6 +175,19 @@ export function openUserGuide(app) {
       h('p.sub', 'منصة ذكية متكاملة تجمع تقنيات الذكاء الاصطناعي لمساعدة مجتمع الصم، ضعاف السمع، والمكفوفين، بدون إعلانات وتعمل بأمان داخل جهازك.')
     ));
 
+    // بطاقة وثيقة وورقة عمل النظارة الذكية للمكفوفين
+    list.append(h('div.card', { style: { borderInlineStart: '4px solid #38bdf8', background: 'rgba(56, 189, 248, 0.08)' } },
+      h('div.row.between',
+        h('h3', '👓 وثيقة وورقة عمل النظارة الذكية'),
+        btn('فتح الوثيقة ↗', {
+          cls: 'primary sm',
+          onclick: () => {
+            window.open('docs/smart_glasses_project_sheet.html', '_blank');
+          },
+        })),
+      h('p.small.muted', 'المخطط الهندسي الكامل، الكود المصدري للفيرموير والبلوتوث (BLE)، مخطط التوصيل الكهربائي، وملفات الطباعة ثلاثية الأبعاد.')
+    ));
+
     // بطاقة الحركات والإيماءات السريعة
     list.append(h('div.card',
       h('h3', '📱 إيماءات الموبايل السريعة'),
