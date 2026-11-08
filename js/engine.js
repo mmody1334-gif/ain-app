@@ -69,7 +69,7 @@ export class Engine {
   async setSigns(signs, onProgress, cached = null) {
     this.refreshMaps(signs);
 
-    const statics1 = this.signs.filter((s) => s.kind === 'static' && (s.hands || 1) !== 2 && s.samples && s.samples.length >= 8);
+    const statics1 = this.signs.filter((s) => (s.kind || s.type || 'static') === 'static' && (s.hands || 1) !== 2 && s.samples && s.samples.length >= 8);
     const data1 = statics1.map((s) => {
       const samples = s.samples.map((a) => ({ p: Float32Array.from(a.slice(0, POSE_LEN)), w: [a[POSE_LEN] ?? 0.5, a[POSE_LEN + 1] ?? 0.5] }));
       // إشارات المشروع الأصلية مسجّلة بيد واحدة؛ نضيف نسخها المعكوسة حتى تعمل
@@ -77,7 +77,7 @@ export class Engine {
       if (s.source === 'starter') samples.push(...samples.map((x) => ({ p: mirrorPose(x.p), w: x.w })));
       return { label: s.id, samples };
     });
-    const statics2 = this.signs.filter((s) => s.kind === 'static' && s.hands === 2 && s.samples2 && s.samples2.length >= 8);
+    const statics2 = this.signs.filter((s) => (s.kind || s.type || 'static') === 'static' && s.hands === 2 && s.samples2 && s.samples2.length >= 8);
     const data2 = statics2.map((s) => ({
       label: s.id,
       samples: s.samples2.map((a) => {
@@ -107,10 +107,14 @@ export class Engine {
         const sig = this.sig.get(g.label);
         if (!sig) continue;
         let match = true;
+        let definedCount = 0;
         for (let i = 0; i < 5; i++) {
-          if (sh.pattern[i] !== '?' && sig[i] && sig[i] !== sh.pattern[i]) { match = false; break; }
+          if (sh.pattern[i] !== '?') {
+            if (!sig[i] || sig[i] !== sh.pattern[i]) { match = false; break; }
+            definedCount++;
+          }
         }
-        if (match) { this.shapeConflict.add(sh.id); break; }
+        if (match && definedCount >= 4) { this.shapeConflict.add(sh.id); break; }
       }
     }
     let loaded1 = false, loaded2 = false;
@@ -214,29 +218,43 @@ export class Engine {
     const assign = [-1, -1];   // خانة كل يد واردة
     if (list.length === 1) {
       const w = list[0].lm[0];
+      const hLabel = list[0].hand;
       let best = -1, bestD = Infinity;
-      for (let k = 0; k < 2; k++) {
-        const sl = this.slots[k];
-        if (!live(sl)) continue;
-        const d = Math.hypot(w.x - sl.w.x, w.y - sl.w.y);
-        if (d < bestD && d < 0.3) { bestD = d; best = k; }
+      // إذا كان تصنيف اليد (يمين/يسار) مطابقاً لخانة حية نفضلها
+      if (hLabel) {
+        for (let k = 0; k < 2; k++) {
+          if (live(this.slots[k]) && this.slots[k].hand === hLabel) {
+            best = k; break;
+          }
+        }
       }
       if (best < 0) {
-        // يد جديدة (أو عادت بعيداً عن موضعها): خانة غير مشغولة، ويُفضَّل تطابق اليمين/اليسار
+        for (let k = 0; k < 2; k++) {
+          const sl = this.slots[k];
+          if (!live(sl)) continue;
+          const d = Math.hypot(w.x - sl.w.x, w.y - sl.w.y);
+          if (d < bestD && d < 0.45) { bestD = d; best = k; }
+        }
+      }
+      if (best < 0) {
+        // يد جديدة (أو عادت بعيداً عن موضعها): خانة غير مشغولة
         const free = [0, 1].filter((k) => !live(this.slots[k]));
-        const byHand = free.find((k) => list[0].hand && this.slots[k].hand === list[0].hand);
+        const byHand = free.find((k) => hLabel && this.slots[k].hand === hLabel);
         best = byHand ?? (free.includes(this.motionSlot) ? this.motionSlot : free[0] ?? this.motionSlot);
       }
       assign[0] = best;
     } else if (list.length >= 2) {
-      const w0 = list[0].lm[0], w1 = list[1].lm[0];
-      const d = (w, k) => (live(this.slots[k]) ? Math.hypot(w.x - this.slots[k].w.x, w.y - this.slots[k].w.y) : 0.5);
-      let straight = d(w0, 0) + d(w1, 1), crossed = d(w0, 1) + d(w1, 0);
-      if (!live(this.slots[0]) && !live(this.slots[1]) && list[0].hand && list[1].hand) {
-        straight = list[0].hand === this.slots[0].hand ? 0 : list[1].hand === this.slots[0].hand ? 1 : 0.5;
-        crossed = 1 - straight;
+      const h0 = list[0].hand, h1 = list[1].hand;
+      // إن عُرفت اليدان تشريحياً (يمين ويسار) نربط خانة 0 باليمين وخانة 1 باليسار لمنع القفز عند التقاطع
+      if (h0 && h1 && h0 !== h1) {
+        if (h0 === 'Right') { assign[0] = 0; assign[1] = 1; }
+        else { assign[0] = 1; assign[1] = 0; }
+      } else {
+        const w0 = list[0].lm[0], w1 = list[1].lm[0];
+        const d = (w, k) => (live(this.slots[k]) ? Math.hypot(w.x - this.slots[k].w.x, w.y - this.slots[k].w.y) : 0.5);
+        let straight = d(w0, 0) + d(w1, 1), crossed = d(w0, 1) + d(w1, 0);
+        if (crossed < straight) { assign[0] = 1; assign[1] = 0; } else { assign[0] = 0; assign[1] = 1; }
       }
-      if (crossed < straight) { assign[0] = 1; assign[1] = 0; } else { assign[0] = 0; assign[1] = 1; }
     }
     const bySlot = [null, null];
     for (let i = 0; i < Math.min(2, list.length); i++) {
@@ -307,7 +325,7 @@ export class Engine {
         }
       }
     }
-    if (!cand && this.enableShapes && !locBlocked && frames.length < 2) {
+    if (!cand && this.enableShapes && !locBlocked) {
       for (const f of frames) {
         const sh = detectBuiltinShape(f.p, f.ext, f.tdist);
         out.shape = sh;

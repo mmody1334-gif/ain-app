@@ -20,8 +20,9 @@ export class HandTracker {
   /**
    * سرعة عبر نافذة زمنية (~0.16 ث) لا بين إطارين: اهتزاز نقاط MediaPipe بين
    * إطارين قد يبدو حركة سريعة، لكنه يتلاشى عند قياس الإزاحة على نافذة أطول.
+   * تقيس حركة المعصم والأصابع حتى لا تفوت حركات السبابة والتلويح.
    */
-  _windowSpeed(t, wi, size) {
+  _windowSpeed(t, wi, tip, size) {
     let ref = null;
     for (let i = this.hist.length - 1; i >= 0; i--) {
       if (t - this.hist[i].t <= 0.16) ref = this.hist[i]; else break;
@@ -29,9 +30,11 @@ export class HandTracker {
     if (!ref) return this.speed;
     const dt = t - ref.t;
     if (dt < 0.04) return this.speed;
-    const v = Math.hypot(wi[0] - ref.wi[0], wi[1] - ref.wi[1]) / Math.max(1e-6, size) / dt;
-    // وزن أقل للأثر القديم: القفزة الحقيقية تظهر أسرع على مؤشر «حركة…»
-    return 0.35 * this.speed + 0.65 * v;
+    const vW = Math.hypot(wi[0] - ref.wi[0], wi[1] - ref.wi[1]) / Math.max(1e-6, size) / dt;
+    const vT = ref.tip ? Math.hypot(tip[0] - ref.tip[0], tip[1] - ref.tip[1]) / Math.max(1e-6, size) / dt : 0;
+    const v = Math.max(vW, vT * 0.85);
+    // وزن متوازن للأثر: استجابة فورية دون ضوضاء
+    return 0.3 * this.speed + 0.7 * v;
   }
 
   /** @returns frame|null */
@@ -40,6 +43,7 @@ export class HandTracker {
     if (!base) { if (this.prev && t - this.lastSeen > 0.4) this.reset(); return null; }
     const ar = aspect > 0 ? aspect : 4 / 3;
     const wi = [lm[0].x, lm[0].y / ar];               // موضع المعصم بوحدات متساوية
+    const tip = [lm[8].x, lm[8].y / ar];              // موضع طرف السبابة لقياس حركة الأصابع
     let p = base.p, wiS = wi, size = base.size;
     if (this.prev) {
       const a = this.alpha;
@@ -48,8 +52,8 @@ export class HandTracker {
       wiS = [0.7 * wi[0] + 0.3 * this.prev.wi[0], 0.7 * wi[1] + 0.3 * this.prev.wi[1]];
       size = 0.5 * base.size + 0.5 * this.prev.size;
     }
-    this.speed = this._windowSpeed(t, wiS, size);
-    this.hist.push({ t, wi: wiS, size });
+    this.speed = this._windowSpeed(t, wiS, tip, size);
+    this.hist.push({ t, wi: wiS, tip, size });
     while (this.hist.length > 12) this.hist.shift();
 
     const extRaw = fingerExtension(p);
@@ -68,32 +72,44 @@ export class HandTracker {
 // ---------- تقسيم الحركات ----------
 export class MotionSegmenter {
   constructor(opt = {}) {
-    this.vOn = opt.vOn ?? 1.8;        // سرعة بدء الحركة (طول كف في الثانية) — الحركة الرأسية في الكاميرا الطولية تُقرأ %75 فقط، فالعتبة كانت تجهلها كليًا
-    this.vOff = opt.vOff ?? 0.9;      // سرعة اعتبار الحركة انتهت
-    this.minDur = opt.minDur ?? 0.22;
+    this.vOn = opt.vOn ?? 1.6;        // سرعة بدء الحركة (طول كف في الثانية) — حساسة لليد والحركات الطبيعية
+    this.vOff = opt.vOff ?? 0.85;     // سرعة اعتبار الحركة انتهت
+    this.minDur = opt.minDur ?? 0.18; // أقل مدة مقبولة للمقطع
     this.maxDur = opt.maxDur ?? 2.5;
     this.still = opt.still ?? 0.18;   // مدة الهدوء لإنهاء الحركة — تقليل التأخير بعد انتهاء الإيماءة
-    this.pre = opt.pre ?? 0.15;
+    this.pre = opt.pre ?? 0.20;       // تخزين مسبق لبداية الحركة
+    this.dropTolerance = opt.dropTolerance ?? 0.18; // مهلة فقدان اليد المؤقت قبل إحباط الحركة
     this.reset();
   }
 
-  reset() { this.buf = []; this.active = false; this.frames = []; this.stillSince = null; this.fastCount = 0; }
+  reset() { this.buf = []; this.active = false; this.frames = []; this.stillSince = null; this.fastCount = 0; this.dropSince = null; }
 
   get isActive() { return this.active; }
 
   /** يستدعى لكل إطار؛ يعيد مقطعاً عند انتهاء الحركة. frame=null عند فقدان اليد. */
   push(frame, t) {
     if (!frame) {
-      if (this.active) return this._finish(t);
+      if (this.active) {
+        if (this.dropSince == null) this.dropSince = t;
+        if (t - this.dropSince >= this.dropTolerance) return this._finish(t);
+        return null;
+      }
       this.buf = [];
+      this.dropSince = null;
       return null;
     }
+    this.dropSince = null;
     const slim = { t: frame.t, p: frame.p, wi: frame.wi, size: frame.size, ext: frame.ext, speed: frame.speed };
     if (!this.active) {
       this.buf.push(slim);
       while (this.buf.length && frame.t - this.buf[0].t > this.pre) this.buf.shift();
-      if (frame.speed > this.vOn) this.fastCount++; else this.fastCount = 0;
-      if (this.fastCount >= 2) { this.active = true; this.frames = this.buf.slice(); this.stillSince = null; }
+      if (frame.speed > this.vOn) this.fastCount++;
+      else this.fastCount = Math.max(0, this.fastCount - 1);
+      if (this.fastCount >= 2 || (this.buf.length >= 2 && frame.speed > this.vOn * 1.3)) {
+        this.active = true;
+        this.frames = this.buf.slice();
+        this.stillSince = null;
+      }
       return null;
     }
     this.frames.push(slim);
@@ -107,8 +123,8 @@ export class MotionSegmenter {
   _finish(t) {
     let frames = this.frames;
     if (this.stillSince != null) frames = frames.filter((f) => f.t <= this.stillSince + 0.06);
-    this.active = false; this.fastCount = 0; this.stillSince = null; this.frames = []; this.buf = [];
-    if (frames.length < 5) return null;
+    this.active = false; this.fastCount = 0; this.stillSince = null; this.dropSince = null; this.frames = []; this.buf = [];
+    if (frames.length < 4) return null;
     const dur = frames[frames.length - 1].t - frames[0].t;
     if (dur < this.minDur) return null;
     return { frames, dur };
@@ -251,7 +267,7 @@ function polygonArea(pts) {
 /** يتعرّف على تمرير/تلويح/إشارات حركة جاهزة من مقطع حركة. الاتجاهات بمنظور صاحب اليد. */
 export function detectBuiltinMotion(seg) {
   const fr = seg.frames, n = fr.length;
-  if (n < 6) return null;
+  if (n < 4) return null;
   const sz = fr.reduce((s, f) => s + f.size, 0) / n;
   const pts = fr.map((f) => [f.wi[0] / sz, f.wi[1] / sz]);
   const dx = pts[n - 1][0] - pts[0][0], dy = pts[n - 1][1] - pts[0][1];
@@ -264,51 +280,56 @@ export function detectBuiltinMotion(seg) {
 
   const m = [0, 1, 2, 3, 4].map((k) => fr.reduce((s, f) => s + f.ext[k], 0) / n);
   const open = openFingers(fr);
-  const indexOnly = m[1] > 0.74 && m[2] < 0.62 && m[3] < 0.62 && m[4] < 0.62;
-  const fist = m[1] < 0.62 && m[2] < 0.62 && m[3] < 0.62 && m[4] < 0.62;
+  const indexOnly = m[1] > 0.70 && m[2] < 0.65 && m[3] < 0.65 && m[4] < 0.65;
+  const fist = m[1] < 0.65 && m[2] < 0.65 && m[3] < 0.65 && m[4] < 0.65;
 
-  // 0) دائرة بقبضة (جديدة: آسف): قبل «نعم» لأن الدائرة فيها أيضاً انعكاسات عمودية،
-  // وقبل فحص «الكف المفتوحة» لأن القبضة لا تجتازه أصلاً.
-  const circular = w > 0.6 && h > 0.6 && net < 0.45 * L && seg.dur >= 0.6 && polygonArea(pts) / Math.max(1e-6, L * L) > 0.035;
+  // 0) دائرة بقبضة (جديدة: آسف)
+  const circular = w > 0.50 && h > 0.50 && net < 0.50 * L && seg.dur >= 0.45 && polygonArea(pts) / Math.max(1e-6, L * L) > 0.025;
   if (fist && circular) {
     return { id: 'fist_circle', strength: polygonArea(pts) / (L * L) };
   }
-  // 1) هزّ السبابة: لا
-  if (indexOnly && seg.dur >= 0.45 && seg.dur <= 2.2 && reversals(pts.map((p) => p[0]), 0.3) >= 2 && net < 0.9 * L) {
-    return { id: 'no', strength: net };
+  // 1) هزّ السبابة: لا (يُقاس على حركة طرف السبابة ومفصلها والمعصم معاً)
+  if (indexOnly && seg.dur >= 0.30 && seg.dur <= 2.2) {
+    const tipX = fr.map((f) => f.p[24]); // طرف السبابة x نسبة للمعصم
+    const revTip = reversals(tipX, 0.20);
+    const revWrist = reversals(pts.map((p) => p[0]), 0.22);
+    if ((revTip >= 2 || revWrist >= 2) && (L < 0.1 || net <= 1.1 * L)) {
+      return { id: 'no', strength: Math.max(revTip, revWrist) };
+    }
   }
   // 2) تحريك القبضة: نعم
-  if (fist && seg.dur >= 0.45 && seg.dur <= 2.2 && reversals(pts.map((p) => p[1]), 0.25) >= 2 && net < 0.9 * L) {
-    return { id: 'yes', strength: net };
+  if (fist && seg.dur >= 0.35 && seg.dur <= 2.2) {
+    const revWristY = reversals(pts.map((p) => p[1]), 0.20);
+    const revFistY = reversals(fr.map((f) => f.p[25]), 0.20);
+    if ((revWristY >= 2 || revFistY >= 2) && (L < 0.1 || net <= 1.1 * L)) {
+      return { id: 'yes', strength: Math.max(revWristY, revFistY) };
+    }
   }
 
   // 2ب) تمرير مبكر: مستقيم وواضح يعمل حتى لو الأصابع غير مقروءة جيدًا (زاوية الكاميرا)
   const straightNow = net / Math.max(1e-6, L);
-  if (seg.dur >= 0.2 && seg.dur <= 1.6 && straightNow >= 0.75) {
-    if (Math.abs(dx) >= 1.8 * Math.abs(dy) && Math.abs(dx) >= 0.75) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
-    if (Math.abs(dy) >= 1.8 * Math.abs(dx) && Math.abs(dy) >= 0.6) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
+  if (seg.dur >= 0.18 && seg.dur <= 1.8 && straightNow >= 0.58) {
+    if (Math.abs(dx) >= 1.35 * Math.abs(dy) && Math.abs(dx) >= 0.6) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
+    if (Math.abs(dy) >= 1.35 * Math.abs(dx) && Math.abs(dy) >= 0.5) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
   }
 
-  if (open < 2.2) return null;
-
-  // 3) تلويح: انعكاسات متعددة في المحور الأفقي
-  if (reversals(pts.map((p) => p[0]), 0.8) >= 3 && net < 0.5 * L && seg.dur >= 0.8) {
+  // 3) تلويح: انعكاسات متعددة في المحور الأفقي للكف
+  const revWave = Math.max(reversals(pts.map((p) => p[0]), 0.40), reversals(fr.map((f) => f.p[24]), 0.40));
+  if (revWave >= 2 && net < 0.65 * L && seg.dur >= 0.45) {
     return { id: 'wave', strength: net };
   }
-  // 4) دائرة: مسار منحنٍ يغطي محورين ويعود قريباً من بدايته
-  if (circular) {
+  // 4) دائرة: مسار منحنٍ يغطي محورين ويعود قريباً من بدايته بكف مفتوح
+  if (circular && open >= 1.8) {
     return { id: 'circle', strength: polygonArea(pts) / (L * L) };
   }
-  // 4ب) كف مفتوحة تهتز عمودياً (جديدة: سعيد): انعكاسات عمودية بلا انعكاسات أفقية
-  // كافية للتلويح، ومسارها ليس مستقيماً فلا يسرقها التمرير.
-  if (seg.dur >= 0.45 && seg.dur <= 2.2 && reversals(pts.map((p) => p[1]), 0.25) >= 2 && reversals(pts.map((p) => p[0]), 0.8) < 2 && net < 0.9 * L) {
+  // 4ب) كف مفتوحة تهتز عمودياً (سعيد)
+  if (seg.dur >= 0.35 && seg.dur <= 2.2 && reversals(pts.map((p) => p[1]), 0.20) >= 2 && reversals(pts.map((p) => p[0]), 0.6) < 2 && net < 0.9 * L) {
     return { id: 'open_bounce', strength: net };
   }
   const straight = net / Math.max(1e-6, L);
-  if (straight < 0.6 || seg.dur > 1.6) return null;
-  // الحركة الأفقية أطول عادةً من العمودية في الصورة، فحدّها أكبر
-  if (Math.abs(dx) >= 1.8 * Math.abs(dy) && Math.abs(dx) >= 0.75) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
-  if (Math.abs(dy) >= 1.8 * Math.abs(dx) && Math.abs(dy) >= 0.6) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
+  if (straight < 0.55 || seg.dur > 1.8) return null;
+  if (Math.abs(dx) >= 1.35 * Math.abs(dy) && Math.abs(dx) >= 0.6) return { id: dx < 0 ? 'swipe_right' : 'swipe_left', strength: net };
+  if (Math.abs(dy) >= 1.35 * Math.abs(dx) && Math.abs(dy) >= 0.5) return { id: dy < 0 ? 'swipe_up' : 'swipe_down', strength: net };
   return null;
 }
 

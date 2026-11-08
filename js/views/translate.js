@@ -2,7 +2,6 @@
 import { h, btn, icon, toast } from '../ui.js';
 import { room } from '../room.js';
 import { assembleSentence } from '../sentence.js';
-import { initFace, updateFace, face } from '../face.js';
 import { URGENT_WORDS, Siren } from '../commands.js';
 
 // نبضة صوتية بسيطة لكلمات الطوارئ
@@ -38,8 +37,8 @@ export function createTranslateView(app) {
   let saved = { favs: [], hist: [] };
   let torchActive = false;
   let torchBtn = null;
-  let faceOn = true, autoOn = true;      // إعدادات المخزن: قواعد الوجه والتجميع الآلي
-  let faceChip = null, faceCb = null, faceTimer = 0, sirenTimer = 0;
+  let autoOn = true;                     // إعدادات المخزن: التجميع الآلي
+  let sirenTimer = 0;
   let autoTimer = 0;
   let roomBar = null;
 
@@ -83,8 +82,8 @@ export function createTranslateView(app) {
   async function saveSent() { await app.store.setMeta('sentences', saved); renderSaved(); }
   const textOf = (s) => assembleSentence(s.words).text; // النص النهائي المجمَّع (بترتيب عربي)
 
-  /** الجملة النهائية: بترتيب عربي ومع تعبير الوجه الحالي */
-  function buildSentence() { return assembleSentence(words, app.cam.running ? face.current : null); }
+  /** الجملة النهائية: بترتيب عربي */
+  function buildSentence() { return assembleSentence(words); }
 
   /** الجدولة: كلمة جديدة تُمسح المؤقت (ننتظر 6 ثوان قبل النطق الآلي) */
   function armAuto() {
@@ -144,18 +143,6 @@ export function createTranslateView(app) {
     if (!words.length) { sentEl.append(h('span.ph', 'ستظهر الكلمات هنا، واحدة بعد أخرى…')); return; }
     words.forEach((w, i) => sentEl.append(h('span.word' + (i === words.length - 1 ? '.active' : ''), w.text)));
     sentEl.scrollTop = sentEl.scrollHeight;
-  }
-
-  /** شريحة تعبير الوجه الصغيرة بجانب الكلمة الكبيرة */
-  function updateFaceChip() {
-    if (!faceChip) return;
-    const cur = faceOn && app.cam.running ? face.current : null;
-    const map = { question: ['سؤال؟', 'warn'], negation: ['نفي ✋', ''], affirm: ['نعم 👍', 'ok'] };
-    if (cur && map[cur]) {
-      faceChip.textContent = map[cur][0];
-      faceChip.className = 'chip-status ' + map[cur][1];
-      faceChip.hidden = false;
-    } else faceChip.hidden = true;
   }
 
   function onEvent(out) {
@@ -237,7 +224,6 @@ export function createTranslateView(app) {
       root = el;
       slot = h('div');
       bigEl = h('div.bigword', { 'aria-live': 'polite' }, '');
-      faceChip = h('span.chip-status', { hidden: true });
       sentEl = h('div.sentence', { 'aria-live': 'polite' });
       tipEl = h('div');
       roomBar = h('div.card', { hidden: true, style: { padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '8px' } });
@@ -246,7 +232,6 @@ export function createTranslateView(app) {
       histEl = h('div');
       quickEl = h('div');
       camBtn = null;
-      const faceCb = h('input', { type: 'checkbox', checked: faceOn, onchange: async (e) => { faceOn = e.target.checked; await app.store.setMeta('face_grammar', faceOn); updateFaceChip(); } });
       const autoCb = h('input', { type: 'checkbox', checked: autoOn, onchange: async (e) => { autoOn = e.target.checked; await app.store.setMeta('auto_sentence', autoOn); if (!autoOn) clearTimeout(autoTimer); } });
       const actions = h('div.row',
         btn('انطق الجملة', { ic: 'speaker', cls: 'primary grow', onclick: () => { const a = buildSentence(); if (a.text) { app.say(a.spoken); recordHistory(a.text); } } }),
@@ -255,18 +240,16 @@ export function createTranslateView(app) {
         btn('', { ic: 'undo', cls: 'ghost', title: 'تراجع', onclick: () => { words.pop(); renderSentence(); armAuto(); } }),
         btn('', { ic: 'trash', cls: 'ghost', title: 'مسح', onclick: () => { words = []; bigEl.textContent = ''; renderSentence(); clearTimeout(autoTimer); } }));
       root.append(slot,
-        h('div.row.center', { style: { justifyContent: 'center', gap: '8px' } }, bigEl, faceChip),
+        h('div.row.center', { style: { justifyContent: 'center' } }, bigEl),
         sentEl, actions, roomBar, quickEl, tipEl,
-        h('div.card', h('label.switch', h('span', 'قواعد تعابير الوجه (سؤال/نفي/نعم)'), faceCb),
-          h('label.switch', h('span', 'انطق الجملة آلياً بعد 6 ثوانٍ من السكون'), autoCb)),
+        h('div.card', h('label.switch', h('span', 'انطق الجملة آلياً بعد 6 ثوانٍ من السكون'), autoCb)),
         h('div.card', h('h2', 'جملي المفضلة'), favEl),
         h('div.card', h('h2', 'السجل'), histEl));
       loadSent().then(renderSaved);
-      app.store.getMeta('face_grammar', true).then((v) => { faceOn = v !== false; faceCb.checked = faceOn; });
       app.store.getMeta('auto_sentence', true).then((v) => { autoOn = v !== false; autoCb.checked = autoOn; });
       renderSentence();
       renderRoomBar();
-      app.on('camera', () => { renderTip(); updateFaceChip(); if (!app.cam.running) room.signing(false); });
+      app.on('camera', () => { renderTip(); if (!app.cam.running) room.signing(false); });
       app.on('signs', renderTip);
     },
     show() {
@@ -275,9 +258,6 @@ export function createTranslateView(app) {
       off = app.cam.onFrame((out, primary, t) => {
         onEvent(out);
         if (room.roomCode && roomMode() !== 'off') room.signing(out.hand);
-        // تعابير الوجه: تشغيل كسول على نفس إطارات الكاميرا، ثم تحديث الشريحة
-        if (faceOn && app.cam.running && faceOn !== false) updateFace(app.cam.video, t);
-        updateFaceChip();
       });
 
       // زر الفلاش داخل أدوات المسرح
@@ -304,13 +284,6 @@ export function createTranslateView(app) {
         tools.insertBefore(torchBtn, tools.firstChild);
       }
 
-      // تشغيل كاشف الوجه مرة واحدة عند الدخول (فشله صامت)
-      if (faceOn && !face.ready) initFace(app.cam.video).then(updateFaceChip);
-
-      // تحديث الشريحة عند انتهاء صلاحية التعبير (كل ثانية)
-      clearInterval(faceTimer);
-      faceTimer = setInterval(updateFaceChip, 1000);
-
       renderTip();
       renderRoomBar();
       loadSent().then(renderSaved);
@@ -318,7 +291,6 @@ export function createTranslateView(app) {
     hide() {
       off?.(); off = null;
       room.signing(false);
-      clearInterval(faceTimer);
       clearTimeout(sirenTimer);
       clearTimeout(autoTimer);
       // إطفاء الصفير إن كان رابضاً عند مغادرة الشاشة
