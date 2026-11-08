@@ -365,3 +365,7 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
 @media (max-width: 999px) { .top:has(.apk-btn:not([hidden])) #status-chip { display: none; } }
 @media (max-width: 380px) { .apk-btn span { display: none; } .apk-btn { padding: 8px; } }
 @media (min-width: 1000px) { .top .apk-btn { margin-inline-start: auto; } .top .apk-btn:not([hidden]) ~ #status-chip { margin-inline-start: 0; } }
+
+/* ---- رادار الكفيف وشعاع حذيفة ---- */
+.ray-card .big-label { font-size: 1.55rem; font-weight: 800; color: var(--ink); margin-top: 4px; }
+.ray-card .big-dist { font-size: 2rem; font-weight: 900; font-family: var(--font-title); margin-top: 2px; }
