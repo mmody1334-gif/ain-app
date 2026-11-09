@@ -1,3 +1,6 @@
-# مكافئ netlify.toml على Cloudflare Pages: بدون build، والنشر من جذر المستودع
+# Headers for Cloudflare Workers Static Assets
 /sw.js
   Cache-Control: no-cache
+
+/3d_models/*
+  Content-Type: text/plain; charset=utf-8
