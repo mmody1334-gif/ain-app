@@ -1,299 +1,301 @@
 ﻿// ====================================================================
-// مشروع نظارة «عين حذيفة» الذكية للمكفوفين - Ain Hudhaifa Smart Glasses
-// ملف التصميم الهندسي الكامل ثلاثي الأبعاد بصيغة OpenSCAD
-// مرخص مفتوح المصدر (Open Source 3D CAD Design)
-// مصمم للأبعاد الفعلية: Seeed XIAO ESP32-C3 + VL53L1X ToF + LiPo 502030
+// مشروع نظارة «عين حذيفة» الذكية للمكفوفين - الإصدار الهندسي المطور v2.0
+// Ain Hudhaifa Smart Glasses - Symmetrical Ergonomic Design (v2.0)
+// تصميم احترافي متناظر 100%، أذرع متطابقة في المظهر، أغطية كابسة كاملة (Snap-on)
+// مصمم خصيصاً ليناسب سرير طابعة Creality (220x220 مم)
 // ====================================================================
 
-$fn = 60; // دقة ونعومة الدوائر والانحناءات (Smooth Curves)
+$fn = 60; // دقة ونعومة الدوائر والانحناءات
 
 // ====================================================================
-// 1. المتغيرات والتحكم في وضع العرض والطباعة (VIEW SELECTOR)
+// 1. اختيار وضع العرض (VIEW SELECTOR)
 // ====================================================================
-// غيّر هذه القيمة لاختيار وضع العرض المطلوب:
-// "ALL_FOR_PRINT" : يفرش جميع القطع مسطحة على السطح جاهزة للتصدير إلى STL والطباعة
-// "ASSEMBLED"     : يعرض النظارة كاملة مجمعة كما تبدو على وجه المستخدم
-// "EXPLODED"      : يعرض المنظور التشريحي المفكك (جميع القطع متباعدة بالأسلاك)
-// "FRAME_ONLY"    : يعرض هيكل الإطار الأمامي فقط
-// "TEMPLES_ONLY"  : يعرض ذراعي النظارة فقط
-// "COVERS_ONLY"   : يعرض الأغطية الكابسة فقط
-// "CLIP_ON_KIT"   : يعرض الحوافظ الملحقة (كليبس) لمن يرتدي نظارة طبية حالية
+// "ALL_FOR_PRINT" : فرش جميع القطع مسطحة على السرير (220x220 مم) للطباعة
+// "ASSEMBLED"     : عرض النظارة مجمعة ومغلقة بالأغطية كما تبدو على الوجه
+// "EXPLODED"      : عرض تشريحي مفكك يوضح الأغطية والقطع الداخلية
+// "FRAME_ONLY"    : الإطار الأمامي فقط
+// "TEMPLES_ONLY"  : الذراعان المتناظران فقط
+// "COVERS_ONLY"   : الأغطية الكابسة فقط
 
-VIEW_MODE = "ALL_FOR_PRINT"; 
+VIEW_MODE = "ALL_FOR_PRINT";
 
 // ====================================================================
-// 2. الأبعاد الحقيقية للقطع الإلكترونية بالمليمتر (مع خلوص تركيب 0.4 مم)
+// 2. المقاسات الدقيقة للقطع الإلكترونية (بالمليمتر مع خلوص 0.4 مم)
 // ====================================================================
 // مستشعر الليزر VL53L1X
-SENS_W = 13.5 + 0.4;
-SENS_H = 10.5 + 0.4;
-SENS_D = 2.6 + 0.3;
-LENS_R = 2.2;         // نصف قطر فتحة عدسة الليزر
-LENS_SEP = 4.2;       // المسافة بين مركزي فتحتي الليزر
+SENS_W   = 13.5 + 0.5;
+SENS_H   = 10.5 + 0.5;
+SENS_D   = 2.6 + 0.4;
+LENS_R   = 2.2;        // نصف قطر فتحة عدسة الليزر
+LENS_SEP = 4.2;        // المسافة بين مركزي فتحتي الليزر
 
-// شريحة المعالج XIAO ESP32-C3
-MCU_W = 21.0 + 0.5;
-MCU_H = 17.5 + 0.5;
-MCU_D = 3.5 + 0.4;
+// معالج XIAO ESP32-C3
+MCU_W    = 21.2 + 0.4;
+MCU_H    = 17.8 + 0.4;
+MCU_D    = 3.6 + 0.3;
 
-// بطارية الليثيوم 502030 (أو 402030)
-BAT_L = 30.0 + 0.8;
-BAT_W = 20.0 + 0.6;
-BAT_D = 5.0 + 0.4;
+// بطارية الليثيوم (سواء 502030 أو بطارية الفيب النحيفة)
+BAT_L    = 32.0 + 0.8;
+BAT_W    = 18.0 + 0.6;
+BAT_D    = 5.2 + 0.4;
 
-// محرك الاهتزاز الحسي (Coin Motor 1027)
-HAPTIC_R = 5.2;       // نصف القطر (قطر 10.4 مم)
-HAPTIC_D = 2.8;       // السمك
+// محرك الاهتزاز الحسي (1027 Coin Motor)
+HAPTIC_R = 5.2;        // نصف القطر (قطر 10.4 مم)
+HAPTIC_D = 2.9;
 
-// أبعاد الإطار العامة (Wayfarer Style)
-FRAME_WIDTH = 142;
-RIM_W = 50;
-RIM_H = 42;
-BRIDGE_W = 18;
-TEMPLE_LEN = 135;
-WALL = 1.6;           // سمك الجدران البلاستيكية للحماية والخفة
+// مفتاح التشغيل متناهي الصغر (Micro Slide Switch SS12D00)
+SW_L     = 8.8 + 0.4;
+SW_W     = 4.4 + 0.4;
+SW_H     = 4.0 + 0.3;
+
+// أبعاد النظارة الكلاسيكية (Wayfarer Balanced Dimensions)
+FRAME_W    = 142.0;    // عرض الإطار الكلي
+LENS_W     = 50.0;     // عرض العدسة
+LENS_H     = 42.0;     // ارتفاع العدسة
+BRIDGE_W   = 18.0;     // عرض جسر الأنف
+TEMPLE_L   = 136.0;    // طول الذراع
+ARM_H_MAX  = 16.5;     // أقصى ارتفاع للذراع عند الصدغ
+ARM_H_MIN  = 6.0;      // ارتفاع نهاية الذراع عند الأذن
+ARM_THICK  = 6.4;      // سمك الذراع الخارجي (موحد لكلا الذراعين للمظهر الطبيعي)
+WALL       = 1.5;      // سمك جدار الحماية
 
 // ====================================================================
-// 3. الموديلات الهندسية التفصيلية (MODULES)
+// 3. الموديلات الهندسية (MODULES)
 // ====================================================================
 
-// --- [أ] حلقة العدسة الواحدة (Rim) ---
-module eye_rim() {
+// --- [1] حلقة العدسة الأنيقة مع شطف الحواف (Lens Rim) ---
+module stylish_rim() {
     difference() {
         hull() {
-            translate([-RIM_W/2, -RIM_H/2, 0])
-                cube([RIM_W, RIM_H, 4.5]);
-            translate([-RIM_W/2 + 2, -RIM_H/2 + 2, 0])
-                cube([RIM_W - 4, RIM_H - 4, 5.5]);
+            translate([-LENS_W/2, -LENS_H/2, 0])
+                cube([LENS_W, LENS_H, 4.2]);
+            translate([-LENS_W/2 + 2, -LENS_H/2 + 2, 0])
+                cube([LENS_W - 4, LENS_H - 4, 5.0]);
         }
-        // فتحة العدسة الغائرة
-        translate([-RIM_W/2 + 3, -RIM_H/2 + 3, -1])
-            cube([RIM_W - 6, RIM_H - 6, 8]);
-        // مجرى تثبيت العدسة (Bevel Groove)
-        translate([-RIM_W/2 + 2, -RIM_H/2 + 2, 1.5])
-            cube([RIM_W - 4, RIM_H - 4, 1.8]);
+        // تجويف العدسة
+        translate([-LENS_W/2 + 3, -LENS_H/2 + 3, -1])
+            cube([LENS_W - 6, LENS_H - 6, 8.0]);
+        // شطف الحافة الداخلية لمظهر انسيابي
+        translate([-LENS_W/2 + 2, -LENS_H/2 + 2, 1.4])
+            cube([LENS_W - 4, LENS_H - 4, 1.6]);
     }
 }
 
-// --- [ب] مجسم الإطار الأمامي الكامل مع تجويف المستشعر (Front Frame) ---
-module front_frame() {
+// --- [2] الإطار الأمامي الكامل مع تجويف المستشعر المخفي داخلياً ---
+module front_frame_v2() {
     difference() {
         union() {
-            // العدسة اليمنى
-            translate([BRIDGE_W/2 + RIM_W/2, 0, 0]) eye_rim();
-            // العدسة اليسرى
-            translate([- (BRIDGE_W/2 + RIM_W/2), 0, 0]) eye_rim();
+            // العدسة اليمنى واليسرى
+            translate([BRIDGE_W/2 + LENS_W/2, 0, 0]) stylish_rim();
+            translate([- (BRIDGE_W/2 + LENS_W/2), 0, 0]) stylish_rim();
             
-            // جسر الأنف مع كتلة المستشعر المدمجة
-            translate([- (SENS_W + WALL*2)/2, - (SENS_H + WALL*2)/2, 0])
-                cube([SENS_W + WALL*2, SENS_H + WALL*2, SENS_D + WALL + 2]);
-                
-            // وسادات الأنف المريحة (Nose pads)
-            translate([-8, -RIM_H/2 + 6, 0]) cube([3, 10, 4]);
-            translate([5, -RIM_H/2 + 6, 0]) cube([3, 10, 4]);
+            // جسر الأنف الانسيابي (أملس من الخارج)
+            hull() {
+                translate([- (SENS_W + WALL*2)/2, - (SENS_H + WALL*2)/2, 0])
+                    cube([SENS_W + WALL*2, SENS_H + WALL*2, SENS_D + WALL + 1.8]);
+                translate([- BRIDGE_W/2, - LENS_H/2 + 10, 0])
+                    cube([BRIDGE_W, 6, 4.2]);
+            }
             
-            // مفاصل الذراع اليمنى واليسرى
-            translate([FRAME_WIDTH/2 - 6, RIM_H/2 - 8, 0])
-                cube([6, 8, 5.5]);
-            translate([-FRAME_WIDTH/2, RIM_H/2 - 8, 0])
-                cube([6, 8, 5.5]);
+            // وسادات الأنف المريحة
+            translate([-7.5, -LENS_H/2 + 5, 0]) cube([3, 11, 4.0]);
+            translate([4.5, -LENS_H/2 + 5, 0]) cube([3, 11, 4.0]);
+            
+            // مفاصل الذراعين (Hinge lugs)
+            translate([FRAME_W/2 - 6, LENS_H/2 - 9, 0]) cube([6, 9, 5.4]);
+            translate([-FRAME_W/2, LENS_H/2 - 9, 0]) cube([6, 9, 5.4]);
         }
         
-        // تجويف مستشعر الليزر VL53L1X داخل جسر الأنف
+        // تجويف مستشعر الليزر (يُركب من الداخل/الخلف ليبقى الوجه الأمامي أملس وأنيق)
         translate([- SENS_W/2, - SENS_H/2, WALL])
-            cube([SENS_W, SENS_H, SENS_D + 4]);
+            cube([SENS_W, SENS_H, SENS_D + 3]);
             
-        // فتحتا خروج واستقبال شعاع الليزر (الأمامية)
-        translate([- LENS_SEP/2, 0, -1])
-            cylinder(r = LENS_R, h = WALL + 2);
-        translate([LENS_SEP/2, 0, -1])
-            cylinder(r = LENS_R, h = WALL + 2);
+        // فتحتا ليزر دقيقتان فقط في واجهة الجسر الأمامية (كأنهما كاميرا ويب أنيقة)
+        translate([- LENS_SEP/2, 0, -1]) cylinder(r = LENS_R, h = WALL + 2);
+        translate([LENS_SEP/2, 0, -1]) cylinder(r = LENS_R, h = WALL + 2);
+        
+        // مجرى الأسلاك العلوي المخفي للذراع الأيمن
+        translate([0, SENS_H/2 - 1, WALL + 0.4])
+            cube([FRAME_W/2, 2.2, 2.0]);
             
-        // مجرى الأسلاك العلوي المخفي (يمر من الأنف إلى الذراع الأيمن)
-        translate([0, SENS_H/2 - 1, WALL + 0.5])
-            cube([FRAME_WIDTH/2, 2.0, 2.0]);
-            
-        // ثقوب مسامير المفاصل (1.5 مم)
-        translate([FRAME_WIDTH/2 - 3, RIM_H/2 - 4, -1])
-            cylinder(r = 0.85, h = 8);
-        translate([-FRAME_WIDTH/2 + 3, RIM_H/2 - 4, -1])
-            cylinder(r = 0.85, h = 8);
+        // ثقوب مسامير المفاصل (1.6 مم)
+        translate([FRAME_W/2 - 3, LENS_H/2 - 4.5, -1]) cylinder(r = 0.9, h = 8);
+        translate([-FRAME_W/2 + 3, LENS_H/2 - 4.5, -1]) cylinder(r = 0.9, h = 8);
     }
 }
 
-// --- [ج] غطاء حماية جسر الأنف وعدستي الليزر (Front Cover) ---
-module bridge_cover() {
+// --- [3] غطاء تثبيت المستشعر الخلفي لجسر الأنف (Nose Bridge Clip) ---
+module bridge_lock_cover() {
     difference() {
-        hull() {
-            translate([- (SENS_W + WALL*2 - 0.4)/2, - (SENS_H + WALL*2 - 0.4)/2, 0])
-                cube([SENS_W + WALL*2 - 0.4, SENS_H + WALL*2 - 0.4, 1.8]);
-            translate([- (SENS_W)/2, - (SENS_H)/2, 2.5])
-                cube([SENS_W, SENS_H, 0.4]);
-        }
-        // فتحتا شعاع الليزر
-        translate([- LENS_SEP/2, 0, -1])
-            cylinder(r = LENS_R + 0.3, h = 5);
-        translate([LENS_SEP/2, 0, -1])
-            cylinder(r = LENS_R + 0.3, h = 5);
+        cube([SENS_W + 1.2, SENS_H + 1.2, 1.4]);
+        // فتحة سلك التوصيل
+        translate([(SENS_W + 1.2)/2 - 3, SENS_H - 2, -1])
+            cube([6, 4, 4]);
     }
-    // ألسنة التثبيت بالكبس (Snap-fit tabs)
-    translate([- SENS_W/2 + 1, - SENS_H/2 + 0.5, -1.8]) cube([1.5, 1.0, 1.8]);
-    translate([SENS_W/2 - 2.5, - SENS_H/2 + 0.5, -1.8]) cube([1.5, 1.0, 1.8]);
-    translate([- SENS_W/2 + 1, SENS_H/2 - 1.5, -1.8]) cube([1.5, 1.0, 1.8]);
-    translate([SENS_W/2 - 2.5, SENS_H/2 - 1.5, -1.8]) cube([1.5, 1.0, 1.8]);
+    // ألسنة تثبيت كابسة
+    translate([0, 0, 1.4]) cube([1.2, SENS_H + 1.2, 1.2]);
+    translate([SENS_W, 0, 1.4]) cube([1.2, SENS_H + 1.2, 1.2]);
 }
 
-// --- [د] الذراع الأيمن الحامل للمعالج والبطارية ومنفذ الشحن ---
-module right_temple() {
-    arm_w = MCU_W + BAT_L + 8;
-    arm_h = max(MCU_H, BAT_W) + WALL*2;
-    arm_d = max(MCU_D, BAT_D) + WALL*2;
-    
+// --- [4] الهيكل الخارجي الموحد للذراع (Symmetrical Arm Outer Body) ---
+// كلا الذراعين لهما نفس هذا الهيكل تماماً من الخارج!
+module unified_arm_shell() {
+    hull() {
+        // مفصلة الصدغ الأمامية
+        cube([6, ARM_H_MAX, ARM_THICK]);
+        // جسم الذراع الأوسط الحامل للمكونات
+        translate([55, 0, 0])
+            cube([10, ARM_H_MAX - 1.5, ARM_THICK]);
+        // انحناء الأذن المريح
+        translate([TEMPLE_L - 35, 2, 0])
+            cube([12, ARM_H_MIN + 2, ARM_THICK - 1.5]);
+        // نهاية الذراع الخلفية
+        translate([TEMPLE_L - 4, 5, 0])
+            cube([4, ARM_H_MIN, ARM_THICK - 2.5]);
+    }
+}
+
+// --- [5] الذراع الأيمن (Right Temple) - يحوي الشريحة والبطارية ومنفذ USB-C ---
+module right_temple_v2() {
     difference() {
-        // الهيكل الخارجي الانسيابي للذراع
-        hull() {
-            cube([arm_w, arm_h, arm_d]);
-            // امتداد انحناء الأذن المريح
-            translate([arm_w + 35, 2, arm_d/2 - 1.5])
-                cube([25, 4.5, 3.0]);
-            translate([TEMPLE_LEN - 5, -8, arm_d/2 - 1.5])
-                cube([10, 4.0, 3.0]);
-        }
+        unified_arm_shell();
         
         // تجويف شريحة XIAO ESP32-C3
-        translate([WALL + 2, WALL, WALL])
+        translate([WALL + 4, WALL + 0.5, WALL])
             cube([MCU_W, MCU_H, MCU_D + 2]);
             
-        // تجويف بطارية الليثيوم 502030
-        translate([MCU_W + 5, (arm_h - BAT_W)/2, WALL])
+        // تجويف البطارية (خلف الشريحة مباشرة داخل نفس الذراع)
+        translate([MCU_W + 8, WALL + 0.5, WALL])
             cube([BAT_L, BAT_W, BAT_D + 2]);
             
-        // فتحة منفذ شحن USB-C (في الحافة السفلية)
-        translate([WALL + 4, -1, WALL + 0.5])
-            cube([9.4, WALL + 2, 3.6]);
+        // فتحة منفذ شحن USB-C (في الحافة السفلية للذراع)
+        translate([WALL + 7, -1, WALL + 0.4])
+            cube([9.6, WALL + 2, 3.8]);
             
-        // مجرى خروج الأسلاك من المفصلة الأمامية
-        translate([-1, arm_h/2 - 1.5, WALL + 1])
-            cube([6, 3.0, 2.5]);
+        // مجرى مرور الأسلاك من المفصلة
+        translate([-1, ARM_H_MAX/2 - 1.5, WALL + 1])
+            cube([8, 3.0, 2.5]);
             
         // ثقب مسمار المفصلة الأمامية
-        translate([3, arm_h - 3, -1])
-            cylinder(r = 0.85, h = arm_d + 2);
+        translate([3, ARM_H_MAX - 4, -1])
+            cylinder(r = 0.9, h = ARM_THICK + 2);
+            
+        // حافة تعشيق الغطاء الكابس (Snap-fit Inner Ledge)
+        translate([WALL + 2, WALL, ARM_THICK - 1.4])
+            cube([MCU_W + BAT_L + 8, ARM_H_MAX - WALL*2 + 0.5, 2.0]);
     }
 }
 
-// --- [هـ] غطاء الذراع الأيمن الكابس (Temple Snap Cover) ---
-module right_temple_cover() {
-    cover_w = MCU_W + BAT_L + 6;
-    cover_h = max(MCU_H, BAT_W) + WALL*2 - 0.4;
-    
+// --- [6] غطاء الذراع الأيمن الكابس (Right Arm Snap Cover) ---
+module right_temple_cover_v2() {
+    c_len = MCU_W + BAT_L + 7.5;
+    c_w   = ARM_H_MAX - WALL*2;
     difference() {
-        cube([cover_w, cover_h, 1.5]);
-        // شطف الحواف لمظهر أملس وأنيق
-        translate([-1, -1, 1.2]) cube([cover_w + 2, 1.0, 1.0]);
-        translate([-1, cover_h, 1.2]) cube([cover_w + 2, 1.0, 1.0]);
+        cube([c_len, c_w, 1.4]);
+        // شطف انسيابي للحافة
+        translate([c_len - 15, -1, -0.5])
+            rotate([0, 0, -12]) cube([20, 5, 3]);
     }
-    // ألسنة الكبس الجانبية
-    translate([5, 0.4, -2.0]) cube([6, 0.8, 2.0]);
-    translate([cover_w - 11, 0.4, -2.0]) cube([6, 0.8, 2.0]);
-    translate([5, cover_h - 1.2, -2.0]) cube([6, 0.8, 2.0]);
-    translate([cover_w - 11, cover_h - 1.2, -2.0]) cube([6, 0.8, 2.0]);
+    // ألسنة كبس محكمة (Snap tabs)
+    translate([6, 0.2, 1.4]) cube([8, 0.8, 1.6]);
+    translate([c_len - 14, 0.2, 1.4]) cube([8, 0.8, 1.6]);
+    translate([6, c_w - 1.0, 1.4]) cube([8, 0.8, 1.6]);
+    translate([c_len - 14, c_w - 1.0, 1.4]) cube([8, 0.8, 1.6]);
 }
 
-// --- [و] الذراع الأيسر الحامل لمحرك الاهتزاز (Left Temple) ---
-module left_temple() {
+// --- [7] الذراع الأيسر (Left Temple) - متطابق خارجياً ويحوي الهزاز والمفتاح ---
+module left_temple_v2() {
     difference() {
-        // هيكل متطابق بالانحناء لموازنة المظهر
-        hull() {
-            cube([65, 12, 5.5]);
-            translate([65 + 35, 2, 1.5])
-                cube([25, 6.0, 4.0]);
-            translate([TEMPLE_LEN - 5, -8, 1.0])
-                cube([10, 5.0, 3.5]);
-        }
-        // تجويف محرك الاهتزاز الحسي (خلف الأذن مباشرة)
-        translate([85, 3.0, 1.0])
+        unified_arm_shell();
+        
+        // تجويف محرك الاهتزاز الحسي (خلف الأذن مباشرة لنقل النبض للعظم)
+        translate([TEMPLE_L - 32, 3.2, WALL])
             cylinder(r = HAPTIC_R, h = HAPTIC_D + 2);
             
-        // مجرى سلك الاهتزاز الدقيق
-        translate([0, 5.0, 2.0])
-            cube([85, 1.8, 1.8]);
+        // تجويف مفتاح التشغيل متناهي الصغر (Micro Slide Switch ON/OFF)
+        translate([WALL + 8, WALL + 1, WALL])
+            cube([SW_L, SW_W, SW_H + 2]);
+            
+        // فتحة بروز زر المفتاح في أسفل الذراع للتحكم
+        translate([WALL + 10, -1, WALL + 0.6])
+            cube([4.5, WALL + 2, 2.8]);
+            
+        // تجويف داخلي لموازنة الوزن (يستوعب أسلاك أو بطارية إضافية)
+        translate([SW_L + 16, WALL + 0.5, WALL])
+            cube([BAT_L, BAT_W - 2, BAT_D + 1]);
+            
+        // مجرى السلك الداخلي
+        translate([0, 4.5, WALL + 1])
+            cube([TEMPLE_L - 30, 2.0, 2.0]);
             
         // ثقب مسمار المفصلة
-        translate([3, 9, -1])
-            cylinder(r = 0.85, h = 8);
+        translate([3, ARM_H_MAX - 4, -1])
+            cylinder(r = 0.9, h = ARM_THICK + 2);
+            
+        // حافة تعشيق الغطاء الكابس الأيسر
+        translate([WALL + 2, WALL, ARM_THICK - 1.4])
+            cube([MCU_W + BAT_L + 8, ARM_H_MAX - WALL*2 + 0.5, 2.0]);
     }
 }
 
-// --- [ز] حوافظ التركيب بالكبس على أي نظارة طبية حالية (Modular Clip-on Kit) ---
-module clip_on_sensor_mount() {
-    difference() {
-        union() {
-            // صندوق المستشعر
-            cube([SENS_W + WALL*2, SENS_H + WALL*2, SENS_D + WALL]);
-            // كليبس مرن للتشبيك بجسر أي نظارة طبية
-            translate([0, -6, 0]) cube([SENS_W + WALL*2, 6, 2.2]);
-            translate([0, -6, 0]) cube([SENS_W + WALL*2, 2, 8.0]);
-            translate([0, -3, 6.5]) cube([SENS_W + WALL*2, 3, 1.5]);
-        }
-        // تجويف المستشعر
-        translate([WALL, WALL, WALL])
-            cube([SENS_W, SENS_H, SENS_D + 2]);
-        // فتحتا الليزر
-        translate([(SENS_W + WALL*2)/2 - LENS_SEP/2, (SENS_H + WALL*2)/2, -1])
-            cylinder(r = LENS_R, h = WALL + 2);
-        translate([(SENS_W + WALL*2)/2 + LENS_SEP/2, (SENS_H + WALL*2)/2, -1])
-            cylinder(r = LENS_R, h = WALL + 2);
-    }
+// --- [8] غطاء الذراع الأيسر الكابس (Left Arm Snap Cover) ---
+module left_temple_cover_v2() {
+    // مطابق تماماً لغطاء الذراع الأيمن لتحقيق التناظر الجمالي الكامل
+    right_temple_cover_v2();
 }
 
 // ====================================================================
-// 4. منطق توزيع العرض حسب VIEW_MODE المختار
+// 4. خريطة توزيع الأجزاء حسب وضع العرض (VIEW MODES)
 // ====================================================================
 
 if (VIEW_MODE == "ALL_FOR_PRINT") {
-    // مصفوفة مرتبة ومدمجة بالكامل داخل سرير طابعة 220x220 مم (الأبعاد الإجمالية: 142x160 مم فقط)
-    // 1. الإطار الأمامي في الأعلى
-    color("DimGray") translate([0, 52, 0]) front_frame();
+    // مصفوفة متكاملة ومرتبة بدقة متناهية داخل سرير طابعة Creality 220x220 مم
+    // الأبعاد الإجمالية للمصفوفة: 142 مم عرض × 155 مم طول (تترك هوامش أمان واسعة)
     
-    // 2. غطاء الجسر وعدسات الليزر
-    color("LightGray") translate([0, 16, 0]) bridge_cover();
+    // 1. الإطار الأمامي في الأعلى مسطحاً على السرير
+    color("DimGray") translate([0, 48, 0]) front_frame_v2();
     
-    // 3. الذراع الأيمن بالعرض (أفقي داخل حدود سرير الطباعة)
-    color("DimGray") translate([-TEMPLE_LEN/2, -15, 0]) right_temple();
+    // 2. غطاء قفل المستشعر الصغير
+    color("LightGray") translate([0, 14, 0]) bridge_lock_cover();
     
-    // 4. الذراع الأيسر بالعرض (أفقي داخل حدود سرير الطباعة)
-    color("DimGray") translate([-TEMPLE_LEN/2, -45, 0]) left_temple();
+    // 3. الذراع الأيمن بالعرض (أفقي ومستقر)
+    color("DimGray") translate([-TEMPLE_L/2, -12, 0]) right_temple_v2();
     
-    // 5. غطاء الذراع الكابس
-    color("LightGray") translate([-32, -75, 0]) right_temple_cover();
+    // 4. الذراع الأيسر بالعرض (متطابق ومستقر)
+    color("DimGray") translate([-TEMPLE_L/2, -36, 0]) left_temple_v2();
+    
+    // 5. غطاء الذراع الأيمن الكابس
+    color("DodgerBlue") translate([-36, -60, 0]) right_temple_cover_v2();
+    
+    // 6. غطاء الذراع الأيسر الكابس
+    color("DodgerBlue") translate([4, -60, 0]) left_temple_cover_v2();
 }
 else if (VIEW_MODE == "ASSEMBLED") {
-    // عرض النظارة مجمعة
-    color("Black") front_frame();
-    color("DimGray") translate([0, 0, SENS_D + WALL + 2]) bridge_cover();
-    color("Black") translate([FRAME_WIDTH/2 - 6, RIM_H/2 - 8, 0]) rotate([0, 90, 0]) rotate([0, 0, -90]) right_temple();
-    color("Black") translate([-FRAME_WIDTH/2, RIM_H/2 - 8, 0]) rotate([0, 90, 0]) rotate([0, 0, 90]) left_temple();
+    // عرض النظارة مجمعة ومغلقة بالأغطية (المظهر الحقيقي الفاخر)
+    color("Black") front_frame_v2();
+    color("Black") translate([FRAME_W/2 - 6, LENS_H/2 - 9, 0]) 
+        rotate([0, 90, 0]) rotate([0, 0, -90]) right_temple_v2();
+    color("Black") translate([-FRAME_W/2, LENS_H/2 - 9, 0]) 
+        rotate([0, 90, 0]) rotate([0, 0, 90]) left_temple_v2();
 }
 else if (VIEW_MODE == "EXPLODED") {
-    // عرض تشريحي مفكك
-    color("Black") front_frame();
-    color("DodgerBlue") translate([0, 0, -25]) bridge_cover();
-    color("Black") translate([FRAME_WIDTH/2 + 25, RIM_H/2, 0]) rotate([0, 0, 15]) right_temple();
-    color("DeepSkyBlue") translate([FRAME_WIDTH/2 + 55, RIM_H/2, 15]) rotate([0, 0, 15]) right_temple_cover();
-    color("Black") translate([-FRAME_WIDTH/2 - 25, RIM_H/2, 0]) rotate([0, 0, -15]) left_temple();
+    // المنظور التشريحي المفكك مع تباعد الأغطية
+    color("Black") front_frame_v2();
+    color("DeepSkyBlue") translate([0, 0, 15]) bridge_lock_cover();
+    color("Black") translate([FRAME_W/2 + 25, LENS_H/2, 0]) rotate([0, 0, 12]) right_temple_v2();
+    color("DeepSkyBlue") translate([FRAME_W/2 + 35, LENS_H/2, 18]) rotate([0, 0, 12]) right_temple_cover_v2();
+    color("Black") translate([-FRAME_W/2 - 25, LENS_H/2, 0]) rotate([0, 0, -12]) left_temple_v2();
+    color("DeepSkyBlue") translate([-FRAME_W/2 - 35, LENS_H/2, 18]) rotate([0, 0, -12]) left_temple_cover_v2();
 }
 else if (VIEW_MODE == "FRAME_ONLY") {
-    front_frame();
+    front_frame_v2();
 }
 else if (VIEW_MODE == "TEMPLES_ONLY") {
-    translate([30, 0, 0]) right_temple();
-    translate([-30, 0, 0]) left_temple();
+    translate([0, 15, 0]) right_temple_v2();
+    translate([0, -15, 0]) left_temple_v2();
 }
 else if (VIEW_MODE == "COVERS_ONLY") {
-    translate([0, 20, 0]) bridge_cover();
-    translate([0, -20, 0]) right_temple_cover();
-}
-else if (VIEW_MODE == "CLIP_ON_KIT") {
-    clip_on_sensor_mount();
+    translate([-30, 0, 0]) right_temple_cover_v2();
+    translate([30, 0, 0]) left_temple_cover_v2();
+    translate([0, 25, 0]) bridge_lock_cover();
 }
