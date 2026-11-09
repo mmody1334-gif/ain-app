@@ -252,12 +252,21 @@ module clip_on_sensor_mount() {
 // ====================================================================
 
 if (VIEW_MODE == "ALL_FOR_PRINT") {
-    // مصفوفة جاهزة للطباعة على سطح طابعة 3D (Z = 0)
-    color("DimGray") front_frame();
-    color("LightGray") translate([0, -35, 0]) bridge_cover();
-    color("DimGray") translate([FRAME_WIDTH/2 + 25, -40, 0]) rotate([0, 0, 90]) right_temple();
-    color("LightGray") translate([FRAME_WIDTH/2 + 65, -40, 0]) rotate([0, 0, 90]) right_temple_cover();
-    color("DimGray") translate([- (FRAME_WIDTH/2 + 35), -40, 0]) rotate([0, 0, -90]) left_temple();
+    // مصفوفة مرتبة ومدمجة بالكامل داخل سرير طابعة 220x220 مم (الأبعاد الإجمالية: 142x160 مم فقط)
+    // 1. الإطار الأمامي في الأعلى
+    color("DimGray") translate([0, 52, 0]) front_frame();
+    
+    // 2. غطاء الجسر وعدسات الليزر
+    color("LightGray") translate([0, 16, 0]) bridge_cover();
+    
+    // 3. الذراع الأيمن بالعرض (أفقي داخل حدود سرير الطباعة)
+    color("DimGray") translate([-TEMPLE_LEN/2, -15, 0]) right_temple();
+    
+    // 4. الذراع الأيسر بالعرض (أفقي داخل حدود سرير الطباعة)
+    color("DimGray") translate([-TEMPLE_LEN/2, -45, 0]) left_temple();
+    
+    // 5. غطاء الذراع الكابس
+    color("LightGray") translate([-32, -75, 0]) right_temple_cover();
 }
 else if (VIEW_MODE == "ASSEMBLED") {
     // عرض النظارة مجمعة
