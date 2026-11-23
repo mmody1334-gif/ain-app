@@ -266,7 +266,7 @@ export function createCommandsView(app) {
         detailRow('برنامج التحكم', 'pc/ain_pc_controller.py')));
     // بطاقة يوم اللجنة: عرض جاهز يُدار بالإيماءات
     const demoRow = h('div.row',
-      h('a.btn.primary', { href: 'demo/hudhaifa_demo.pptx', download: 'hudhaifa_demo.pptx', style: { textDecoration: 'none' } }, icon('download'), h('span', 'نزّل عرض اللجنة التجريبي')),
+      h('a.btn.primary', { href: 'demo/ain_demo.pptx', download: 'ain_demo.pptx', style: { textDecoration: 'none' } }, icon('download'), h('span', 'نزّل عرض اللجنة التجريبي')),
       h('a.btn.ghost', { href: 'pc/run_windows.bat', download: 'run_windows.bat', style: { textDecoration: 'none' } }, icon('download'), h('span', 'تشغيل بضغطة')),
       h('a.btn.ghost', { href: 'pc/requirements.txt', download: 'requirements.txt', style: { textDecoration: 'none' } }, icon('download'), h('span', 'المتطلبات')));
     const committeeCard = h('div.card', h('h2', 'يوم اللجنة'),

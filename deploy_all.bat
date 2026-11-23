@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-rem نشر موقع «حذيفة» وخادم الغرف على Cloudflare بأمر واحد (يحتاج Node.js وتسجيل دخول wrangler مرة واحدة)
+rem نشر موقع «عين» وخادم الغرف على Cloudflare بأمر واحد (يحتاج Node.js وتسجيل دخول wrangler مرة واحدة)
 cd /d "%~dp0"
 git pull
 if exist _deploy rmdir /s /q _deploy

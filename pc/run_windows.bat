@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
-title Hudhaifa - PC controller
-echo Hudhaifa PC controller
+title Ain - PC controller
+echo Ain PC controller
 echo First run installs the needed libraries (numpy, opencv-python, mediapipe).
 echo.
 py -3 -m pip install -q -r "%~dp0requirements.txt"
