@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>وثيقة وورقة عمل مشروع: نظارة «عين حذيفة» الذكية للمكفوفين</title>
+  <title>وثيقة وورقة عمل مشروع: نظارة «عين عين» الذكية للمكفوفين</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -299,7 +299,7 @@
   <!-- Header Bar -->
   <div class="header-bar">
     <div class="badge-pill">
-      <span>👁️ مشروع عين حذيفة</span>
+      <span>👁️ مشروع عين عين</span>
       <span>•</span>
       <span>الإصدار العتادي v1.0</span>
       <span>•</span>
@@ -313,16 +313,16 @@
 
   <!-- Hero Overview -->
   <header class="hero">
-    <h1>نظارة «عين حذيفة» الذكية للمكفوفين</h1>
+    <h1>نظارة «عين عين» الذكية للمكفوفين</h1>
     <p>
-      نظام بصري-إلكتروني مدمج يرتديه الكفيف كنظارة عادية، يعتمد على مستشعر مسافة ليزري (ToF) فائق الدقة، متصل لاسلكياً عبر تقنية Bluetooth Low Energy (BLE) بتطبيق «عين حذيفة» ليحوّل البيئة المحيطة إلى رادار صوتي واهتزازات لمسية ترشد الكفيف إلى العوائق والمسافات بأمان كامل.
+      نظام بصري-إلكتروني مدمج يرتديه الكفيف كنظارة عادية، يعتمد على مستشعر مسافة ليزري (ToF) فائق الدقة، متصل لاسلكياً عبر تقنية Bluetooth Low Energy (BLE) بتطبيق «عين عين» ليحوّل البيئة المحيطة إلى رادار صوتي واهتزازات لمسية ترشد الكفيف إلى العوائق والمسافات بأمان كامل.
     </p>
   </header>
 
   <!-- Product Visual Card -->
   <div class="section-card" style="text-align: center; padding: 18px;">
     <h3 style="color: #93c5fd; font-size: 1.1rem; margin-bottom: 12px;">المظهر النهائي للنظارة بعد التركيب والمقاسات الحقيقية بالميليمتر</h3>
-    <img src="smart_glasses_render.jpg" alt="نظارة عين حذيفة بعد التركيب" style="max-width: 100%; border-radius: 10px; border: 1px solid var(--card-border); box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+    <img src="smart_glasses_render.jpg" alt="نظارة عين عين بعد التركيب" style="max-width: 100%; border-radius: 10px; border: 1px solid var(--card-border); box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
     <p style="color: #94a3b8; font-size: 0.88rem; margin-top: 10px;">
       * تظهر النظارة بتصميم عصري وخفيف (27 جم)، المستشعر غائر في جسر الأنف الأمامي والمعالج والبطارية مخفيان داخل ذراع النظارة الأيمن.
     </p>
@@ -333,7 +333,7 @@
     <h2 class="section-title"><span class="num">★</span> التشريح الهندسي المفكك وفيزياء عمل النظارة (بأسلوب مبسط)</h2>
     <p style="margin-bottom: 14px;">يوضح المخطط التشريحي التالي تفكيك النظارة إلى قطعها الـ 8 الأساسية وكيفية استقرار كل قطعة داخل تجويفها الخاص بدون أي أسلاك ظاهرة:</p>
     <div style="text-align: center; margin-bottom: 18px;">
-      <img src="smart_glasses_exploded_arabic.jpg" alt="التشريح الهندسي المفكك لنظارة عين حذيفة" style="max-width: 100%; border-radius: 10px; border: 1px solid var(--card-border); box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+      <img src="smart_glasses_exploded_arabic.jpg" alt="التشريح الهندسي المفكك لنظارة عين عين" style="max-width: 100%; border-radius: 10px; border: 1px solid var(--card-border); box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
     </div>
     <div class="specs-grid">
       <div class="spec-item">
@@ -470,7 +470,7 @@
   <!-- Section 3: Firmware Code -->
   <section class="section-card">
     <h2 class="section-title"><span class="num">3</span> الكود المصدري للفيرموير (ESP32-C3 Arduino C++)</h2>
-    <p>الكود الكامل للشريحة، يقرأ المستشعر ويرسل المسافات كـ Notifications عبر البلوتوث المنخفض الطاقة (BLE) بنفس الـ UUIDs المعتمدة في تطبيق عين حذيفة:</p>
+    <p>الكود الكامل للشريحة، يقرأ المستشعر ويرسل المسافات كـ Notifications عبر البلوتوث المنخفض الطاقة (BLE) بنفس الـ UUIDs المعتمدة في تطبيق عين عين:</p>
 
     <div class="code-container">
       <button class="copy-btn" onclick="copyCode(this)">نسخ الكود</button>
@@ -481,7 +481,7 @@
 #include &lt;BLEUtils.h&gt;
 #include &lt;BLE2902.h&gt;
 
-// UUIDs متطابقة مع تطبيق عين حذيفة (js/views/ray.js)
+// UUIDs متطابقة مع تطبيق عين عين (js/views/ray.js)
 #define SERVICE_UUID        "0000ffe0-0000-1000-8000-00805f9b34fb"
 #define CHARACTERISTIC_UUID "0000ffe1-0000-1000-8000-00805f9b34fb"
 
@@ -531,7 +531,7 @@ void setup() {
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
   pAdvertising->start();
-  Serial.println("نظارة حذيفة جاهزة للاقتران عبر البلوتوث!");
+  Serial.println("نظارة عين جاهزة للاقتران عبر البلوتوث!");
 }
 
 void loop() {
@@ -560,11 +560,11 @@ void loop() {
   <!-- Section 4: Web Bluetooth App Integration -->
   <section class="section-card">
     <h2 class="section-title"><span class="num">4</span> آلية الاقتران بالتطبيق (Web Bluetooth Integration)</h2>
-    <p>يتصل تطبيق «عين حذيفة» بالنظارة مباشرة من متصفح الهاتف أو الكمبيوتر بدون الحاجة لتثبيت أي تطبيق وسيط، مستفيداً من معيار <code>navigator.bluetooth</code>:</p>
+    <p>يتصل تطبيق «عين عين» بالنظارة مباشرة من متصفح الهاتف أو الكمبيوتر بدون الحاجة لتثبيت أي تطبيق وسيط، مستفيداً من معيار <code>navigator.bluetooth</code>:</p>
 
     <div class="code-container">
       <button class="copy-btn" onclick="copyCode(this)">نسخ الكود</button>
-      <pre><code>// كود جافاسكريبت المعتمد في تطبيق عين حذيفة (قسم الرادار)
+      <pre><code>// كود جافاسكريبت المعتمد في تطبيق عين عين (قسم الرادار)
 async function connectGlasses() {
   const device = await navigator.bluetooth.requestDevice({
     filters: [{ namePrefix: 'Hudhaifa' }],
@@ -608,7 +608,7 @@ async function connectGlasses() {
           طباعة كليبس جسر الأنف وغلاف الذراع بخامة <strong>Resin أو SLS Nylon</strong> لتكون ناعمة ومطابقة للنظارات الطبية. الملفات جاهزة بمجلد <code>3d_models/</code>:
         </p>
         <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 0.82rem;">
-          <a href="/3d_models/hudhaifa_smart_glasses_complete.scad" download style="color: #38bdf8;">📥 تحميل كود OpenSCAD الكامل (.scad)</a>
+          <a href="/3d_models/ain_smart_glasses_complete.scad" download style="color: #38bdf8;">📥 تحميل كود OpenSCAD الكامل (.scad)</a>
           <a href="/3d_models/sensor_bridge_mount.stl" download style="color: #38bdf8;">📥 تحميل مجسم جسر الأنف (.stl)</a>
           <a href="/3d_models/temple_electronics_case.stl" download style="color: #38bdf8;">📥 تحميل غلاف الذراع (.stl)</a>
         </div>

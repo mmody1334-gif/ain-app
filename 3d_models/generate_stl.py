@@ -36,7 +36,7 @@ def write_box_stl(filename, x_min, x_max, y_min, y_max, z_min, z_max, hollow_cut
         
     with open(filename, 'wb') as f:
         # 80-byte header
-        header = b'Ain Hudhaifa Smart Glasses 3D Printable STL Model'.ljust(80, b' ')
+        header = b'Ain Smart Glasses 3D Printable STL Model'.ljust(80, b' ')
         f.write(header)
         f.write(struct.pack('<I', len(facets)))
         for norm, p1, p2, p3 in facets:

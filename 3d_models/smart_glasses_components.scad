@@ -1,5 +1,5 @@
 // ====================================================================
-// Ain Hudhaifa Smart Glasses - 3D Printable Parametric CAD Model (OpenSCAD)
+// Ain Smart Glasses - 3D Printable Parametric CAD Model (OpenSCAD)
 // Model: Full Smart Frame + Modular Clip-on Kit
 // Engineered for: Seeed Studio XIAO ESP32-C3 + VL53L1X ToF + 502030 LiPo
 // ====================================================================

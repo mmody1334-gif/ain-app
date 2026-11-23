@@ -1,4 +1,4 @@
-// دليل الاستخدام وإرشادات الأقسام التفاعلية لتطبيق حذيفة
+// دليل الاستخدام وإرشادات الأقسام التفاعلية لتطبيق عين
 import { h, btn, icon, toast, sheet, haptic } from './ui.js';
 
 export const SECTION_GUIDES = {
