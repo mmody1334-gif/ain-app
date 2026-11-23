@@ -1,4 +1,4 @@
-# يبني ملف APK لتطبيق «حذيفة» وينشره في Releases باسم apk-latest.
+# يبني ملف APK لتطبيق «عين» وينشره في Releases باسم apk-latest.
 # التطبيق نافذة كروم على الموقع، فلا يحتاج إعادة بناء عند تحديث الموقع؛ يُبنى فقط عند تغيير مجلد android أو الأيقونات.
 name: Android APK
 on:
@@ -37,7 +37,7 @@ jobs:
           else
             # بلا أسرار: مفتاح مؤقت لهذه النسخة فقط (يعمل، لكن يظهر شريط العنوان أعلى التطبيق)
             P=$(openssl rand -hex 12)
-            keytool -genkeypair -keystore android/app/release.keystore -alias ain -keyalg RSA -keysize 2048 -validity 10000 -storepass "$P" -keypass "$P" -dname "CN=Hudhaifa temp"
+            keytool -genkeypair -keystore android/app/release.keystore -alias ain -keyalg RSA -keysize 2048 -validity 10000 -storepass "$P" -keypass "$P" -dname "CN=Ain temp"
             echo "KEYSTORE_PASS=$P" >> "$GITHUB_ENV"
             echo "SIGNED_WITH=temporary" >> "$GITHUB_ENV"
           fi
@@ -50,9 +50,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk hudhaifa.apk
+          cp android/app/build/outputs/apk/release/app-release.apk ain.apk
           gh release delete apk-latest -y --cleanup-tag || true
-          gh release create apk-latest hudhaifa.apk --title "تطبيق حذيفة (APK)" --latest \
+          gh release create apk-latest ain.apk --title "تطبيق عين (APK)" --latest \
             --notes "نسخة ${{ github.run_number }} — توقيع: ${SIGNED_WITH}. ثبّت الملف على أندرويد (اسمح بالتثبيت من مصادر غير معروفة). التطبيق يفتح الموقع بملء الشاشة ويتحدّث تلقائياً مع الموقع."
       - uses: actions/upload-artifact@v4
-        with: { name: hudhaifa-apk, path: hudhaifa.apk }
+        with: { name: ain-apk, path: ain.apk }
