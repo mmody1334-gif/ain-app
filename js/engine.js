@@ -6,6 +6,13 @@ import { PairModel } from './pairmodel.js';
 import { HandTracker, MotionSegmenter, MotionBank, segmentToSeq, detectBuiltinMotion, detectBuiltinShape, fingerStates, BUILTIN_SHAPES } from './motion.js';
 import { POSE_LEN, FEATURE_LEN, FEATURE_LEN2, pairToFeatures, mirrorPose, bodyAnchor, wristLocation } from './features.js';
 
+// يد تبعد عن أقرب «نصف إشارة بيدين» أقل من هذا = غالباً بداية إشارة بيدين.
+// مقاسة على بيانات starter: أنصاف نفس الإشارة ≤ 0.041، وإشارات اليد الواحدة ≥ 0.139.
+const HALF_2H_DIST = 0.09;
+const WAIT_FOR_2ND_HAND_SEC = 0.5;
+// أقرب عيّنة لإشارة مسجّلة ضمن هذا المضاعف من عتبة القبول = منطقة غموض: صمت لا شكل جاهز
+const NEAR_LEARNED_FACTOR = 1.25;
+
 /** نموذج الإشارة المخزَّنة:
  *  { id, word, aliases?, kind:'static'|'motion'|'builtin', rule?, samples?, samples2?, hands?, takes?, ref?, anim?, source, created }
  *  - static : عيّنات [63 نقطة + موضع المعصم x,y] تُدرَّب في المتصفح
@@ -90,6 +97,13 @@ export class Engine {
     }));
     this.clf = null; this.clf2 = null;
     this.trainData = data1; this.trainData2 = data2;
+    // «نصف إشارة بيدين»: وضعيات كل يد من إشارات اليدين (ومعكوسها). يد واحدة تشبهها
+    // غالباً بداية إشارة بيدين، فننتظر اليد الثانية قليلاً بدل نطق كلمة يد واحدة خطأ.
+    this.halfBank = [];
+    for (const s of statics2) for (const a of s.samples2) for (const o of [0, POSE_LEN]) {
+      const p = Float32Array.from(a.slice(o, o + POSE_LEN));
+      this.halfBank.push(p, mirrorPose(p));
+    }
     // «بوابة الأصابع»: أي إصبع كان مفروداً دائماً (أو مطوياً دائماً) في تسجيلاتك، فظهوره بالعكس يرفض الإشارة.
     // تحلّ الخلط بين إشارتين تختلفان في إصبع واحد، فالمصنِّف وحده قد يتساهل فيها.
     this.sig = new Map();
@@ -204,7 +218,7 @@ export class Engine {
     // ----- ثبات -----
     if (!out.moving && frame.speed < this.staticSpeedMax && t >= (this.motionUntil || 0) && t >= (this.staticUntil || 0)) this._static(t, frames, out);
     else if (this.hold.key) { this._resetHold(); }
-    out.hold = this.hold.key ? { key: this.hold.key, progress: Math.min(1, (t - this.hold.since) / this.holdSec), sign: this.hold.sign, id: this.hold.id } : null;
+    out.hold = this.hold.key ? { key: this.hold.key, progress: Math.min(1, (t - this.hold.since) / (this.hold.need ?? this.holdSec)), sign: this.hold.sign, id: this.hold.id } : null;
     return out;
   }
 
@@ -283,7 +297,7 @@ export class Engine {
   }
 
   _static(t, frames, out) {
-    let cand = null, locBlocked = false;
+    let cand = null, locBlocked = false, nearLearned = false;
     if (this.enableStatic && this.clf) {
       // نجرب اليدين معاً لإشارات اليد الواحدة، ونأخذ أوثق نتيجة
       for (const f of frames) {
@@ -312,6 +326,8 @@ export class Engine {
           }
         }
         if (frameCand && (!cand || frameCand.conf > cand.conf)) cand = frameCand;
+        // قريبة من إشارة مسجّلة لكن غير مؤكدة: نسكت بدل أن نقول كلمة أخرى من الأشكال الجاهزة
+        if (!frameCand && pr.label && pr.label !== 'none' && pr.dist <= this.clf.nnThr * NEAR_LEARNED_FACTOR) nearLearned = true;
       }
     }
     // إشارات اليدين: نجرّب الترتيبين حتى لا يهم ترتيب الكاشف
@@ -325,7 +341,7 @@ export class Engine {
         }
       }
     }
-    if (!cand && this.enableShapes && !locBlocked) {
+    if (!cand && this.enableShapes && !locBlocked && !nearLearned) {
       for (const f of frames) {
         const sh = detectBuiltinShape(f.p, f.ext, f.tdist);
         out.shape = sh;
@@ -335,12 +351,16 @@ export class Engine {
     const h = this.hold;
     if (cand) {
       if (h.key === cand.key) { h.lastGood = t; h.conf = 0.8 * h.conf + 0.2 * cand.conf; }
-      else { this.hold = { key: cand.key, since: t, lastGood: t, sign: cand.sign, kind: cand.kind, id: cand.id, conf: cand.conf }; }
+      else {
+        // يد واحدة تشبه نصف إشارة بيدين: مهلة إضافية حتى تلحقها اليد الثانية
+        const wait2H = frames.length === 1 && !(cand.sign && cand.sign.hands === 2) && this._looksLikeHalfOf2H(frames[0].p);
+        this.hold = { key: cand.key, since: t, lastGood: t, sign: cand.sign, kind: cand.kind, id: cand.id, conf: cand.conf, need: this.holdSec + (wait2H ? WAIT_FOR_2ND_HAND_SEC : 0) };
+      }
     } else if (h.key && t - h.lastGood > this.graceSec) {
       this._resetHold();
     }
     const hh = this.hold;
-    if (hh.key && t - hh.since >= this.holdSec && this.lock !== hh.key) {
+    if (hh.key && t - hh.since >= (hh.need ?? this.holdSec) && this.lock !== hh.key) {
       this.lock = hh.key;
       this.staticUntil = t + 0.4;
       this.lockOther = null; this.lockLostSince = 0;
@@ -356,6 +376,18 @@ export class Engine {
       if (!this.lockLostSince) this.lockLostSince = t;
       else if (t - this.lockLostSince > 0.35) this.lock = null;
     } else this.lockLostSince = 0;
+  }
+
+  /** هل تشبه هذه اليد إحدى يدي إشارة بيدين؟ (متوسط الفرق المطلق على 63 قيمة) */
+  _looksLikeHalfOf2H(p) {
+    const bank = this.halfBank;
+    if (!bank || !bank.length) return false;
+    for (const q of bank) {
+      let d = 0;
+      for (let i = 0; i < POSE_LEN && d <= HALF_2H_DIST * POSE_LEN; i++) d += Math.abs(p[i] - q[i]);
+      if (d / POSE_LEN <= HALF_2H_DIST) return true;
+    }
+    return false;
   }
 
   _fingerGate(label, p, ext, tdist) {
