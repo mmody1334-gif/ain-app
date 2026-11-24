@@ -12,6 +12,8 @@ __pycache__/
 
 # مجلد النشر المؤقت والملفات غير المنشورة
 _deploy/
+# ملفات خاصة بالموقع فقط (لا تُرفع)
+_private_web/
 android-native/
 scratch/
 videos/
