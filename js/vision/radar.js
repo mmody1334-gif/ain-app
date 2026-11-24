@@ -426,3 +426,42 @@ export function renderRadarOverlay(ctx, w, h, target, mirroredVideo = false) {
   ctx.fillText(labelText, labelX, labelY - 6);
   ctx.restore();
 }
+
+/**
+ * أنماط اهتزاز الرادار (ملّي ثانية: اهتزاز، توقف، اهتزاز...). كل فئة مسافة لها «إحساس» مختلف
+ * يتعلّمه المستخدم: ثلاث نبضات طويلة = توقف، نبضتان = قريب، نبضة = متوسط، تكتكة = الكاميرا مغطاة.
+ */
+export const HAPTIC_PATTERNS = {
+  danger:   { pattern: [180, 70, 180, 70, 180], everyMs: 1000 },
+  near:     { pattern: [70, 110, 70],           everyMs: 1600 },
+  mid:      { pattern: [50],                    everyMs: 2500 },
+  occluded: { pattern: [25, 50, 25, 50, 25, 50, 25, 50, 25], everyMs: 3000 },
+};
+
+export class RadarHaptics {
+  constructor(opt = {}) {
+    this.vibrateFn = opt.vibrateFn || ((p) => { try { navigator.vibrate?.(p); } catch (_) { /* لا شيء */ } });
+    this.enabled = true;
+    this.lastBandId = null;
+    this.lastAt = -Infinity;
+  }
+
+  /** يُستدعى مع كل نتيجة رادار. target.pocket/dark ← صمت. */
+  update(target, nowMs = performance.now()) {
+    if (!this.enabled || !target || target.dark || target.pocket) { this.lastBandId = null; return null; }
+    const id = target.occluded ? 'occluded'
+      : quantizeDistanceBand(target.dist, this.lastBandId === 'occluded' ? null : this.lastBandId).id;
+    const spec = HAPTIC_PATTERNS[id];
+    const RANK = { occluded: 4, danger: 3, near: 2, mid: 1 };
+    const worse = (RANK[id] || 0) > (RANK[this.lastBandId] || 0);
+    this.lastBandId = id;
+    if (!spec) return null;
+    // الاقتراب لفئة أخطر يهتز فوراً؛ الابتعاد أو الثبات بإيقاع الفئة (لا رشقة اهتزازات)
+    if (!worse && nowMs - this.lastAt < spec.everyMs) return null;
+    this.lastAt = nowMs;
+    this.vibrateFn(spec.pattern);
+    return spec.pattern;
+  }
+
+  stop() { this.lastBandId = null; try { this.vibrateFn(0); } catch (_) { /* لا شيء */ } }
+}

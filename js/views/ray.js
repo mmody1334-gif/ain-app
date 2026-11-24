@@ -4,7 +4,7 @@
 
 import { h, btn, icon, toast } from '../ui.js';
 import { RayEngine } from '../depth.js';
-import { RadarSpeechGate } from '../vision/radar.js';
+import { RadarSpeechGate, RadarHaptics } from '../vision/radar.js';
 
 // ربط النظارة متوقف مؤقتاً بقرار صاحب المشروع حتى يكتمل العتاد. لإعادته: true
 export const BLE_HARDWARE_ENABLED = false;
@@ -19,6 +19,8 @@ export function createRayView(app) {
   let sonarTimer = null;
   // بوابة النطق: مرة واحدة، فاصل 8 ثوانٍ، وإعادة فقط عند تغيّر المسافة أو الاتجاه؛ وتسكت في الجيب/الظلام
   const gate = new RadarSpeechGate({ speakFn: (text, o) => app.say(text, o) });
+  // اهتزاز بنمط لكل مسافة (يعمل حتى مع كتم الصوت، لمن لا يسمع جيداً)
+  const haptics = new RadarHaptics();
   let isTorchOn = false;
   let enableSonar = true;
   let enableVib = true;
@@ -79,10 +81,6 @@ export function createRayView(app) {
     osc.start(t);
     osc.stop(t + dur + 0.01);
 
-    if (enableVib && clampedDist < 2.0 && typeof navigator !== 'undefined' && navigator.vibrate) {
-      const vibDur = Math.round(20 + factor * 40);
-      try { navigator.vibrate(vibDur); } catch (_) {}
-    }
   }
 
   function scheduleSonar() {
@@ -385,7 +383,7 @@ export function createRayView(app) {
       vibCb = h('input', {
         type: 'checkbox',
         checked: enableVib,
-        onchange: (e) => { enableVib = e.target.checked; },
+        onchange: (e) => { enableVib = e.target.checked; haptics.enabled = enableVib; if (!enableVib) haptics.stop(); },
       });
 
       const stealthBtn = btn('شاشة معتمة (OLED)', {
@@ -476,6 +474,8 @@ export function createRayView(app) {
           hudDistEl.textContent = gate.isPocketMode ? '— م' : res.occluded ? 'قريب جداً' : `${res.dist.toFixed(1)} م`;
         }
 
+        haptics.update({ ...currentTarget, pocket: gate.isPocketMode });
+
         if (currentTarget.dist < 0.9) {
           hudDistEl.style.color = 'var(--bad)';
         } else if (currentTarget.dist < 2.0) {
@@ -497,6 +497,7 @@ export function createRayView(app) {
       clearTimeout(sonarTimer);
       app.cam.skipHands = false;
       gate.cancelFn();
+      haptics.stop();
       engine.stop();
       if (offFrame) { offFrame(); offFrame = null; }
       if (app.cam.octx && app.cam.overlay) {
