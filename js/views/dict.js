@@ -103,7 +103,7 @@ export function createDictView(app) {
       }, 30);
       const notes = similarityFor(app, s);
       return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } }, box, h('p.small.muted', desc),
-        h('div.row', btn('انطق', { ic: 'speaker', cls: 'sm', onclick: () => app.say(s.word) }),
+        h('div.row', btn('انطق', { ic: 'speaker', cls: 'sm', onclick: () => app.say(s.word, { cancel: true }) }),
           s.kind === 'static' ? btn('أضف عيّنات', { ic: 'plus', cls: 'sm', onclick: () => { close(); openRecorder({ append: s }); } }) : null,
           btn('إعادة تسمية', { cls: 'sm ghost', onclick: () => { close(); renameSign(s); } })),
         notes.length ? h('div', h('h2', { style: { fontSize: '1rem', marginBottom: '6px' } }, 'التشابه مع غيرها'), renderNotes(notes)) : null);

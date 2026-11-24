@@ -124,7 +124,7 @@ export function createTranslateView(app) {
       const list = h('div.list');
       saved.favs.forEach((s, i) => list.append(h('div.item',
         h('div.grow', h('button.ttl', { style: { border: 0, background: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'start', font: 'inherit', padding: 0 }, onclick: () => loadSentence(s, true) }, s.text.split(' ').slice(0, 6).join(' ')), h('div.meta', `${s.words.length} كلمة`)),
-        h('button.iconbtn', { 'aria-label': 'انطق', onclick: () => app.say(textOf(s)) }, icon('speaker')),
+        h('button.iconbtn', { 'aria-label': 'انطق', onclick: () => app.say(textOf(s), { cancel: true }) }, icon('speaker')),
         h('button.iconbtn', { 'aria-label': 'حذف من المفضلة', onclick: async () => { saved.favs.splice(i, 1); await saveSent(); } }, icon('heart')))));
       favEl.append(list);
     }
@@ -163,7 +163,7 @@ export function createTranslateView(app) {
           { background: 'transparent', color: 'var(--accent)', borderRadius: '0' },
         ], { duration: 800 });
         urgentFlash(e.sign.word);
-        app.say(e.sign.word, { rate: 0.7, volume: 1 }); // أبطأ وأعلى صوتاً
+        app.say(e.sign.word, { rate: 0.7, volume: 1, urgent: true }); // أبطأ وأعلى صوتاً
         clearTimeout(sirenTimer);
         sirenTimer = setTimeout(() => { siren.start(); setTimeout(() => siren.stop(), 900); }, 1500); // دفعة صفير قصيرة
       } else {
@@ -234,7 +234,7 @@ export function createTranslateView(app) {
       camBtn = null;
       const autoCb = h('input', { type: 'checkbox', checked: autoOn, onchange: async (e) => { autoOn = e.target.checked; await app.store.setMeta('auto_sentence', autoOn); if (!autoOn) clearTimeout(autoTimer); } });
       const actions = h('div.row',
-        btn('انطق الجملة', { ic: 'speaker', cls: 'primary grow', onclick: () => { const a = buildSentence(); if (a.text) { app.say(a.spoken); recordHistory(a.text); } } }),
+        btn('انطق الجملة', { ic: 'speaker', cls: 'primary grow', onclick: () => { const a = buildSentence(); if (a.text) { app.say(a.spoken, { cancel: true }); recordHistory(a.text); } } }),
         btn('', { ic: 'star', cls: 'ghost', title: 'احفظ في المفضلة', onclick: saveFav }),
         btn('', { ic: 'share', cls: 'ghost', title: 'مشاركة أو نسخ الجملة', onclick: quickShare }),
         btn('', { ic: 'undo', cls: 'ghost', title: 'تراجع', onclick: () => { words.pop(); renderSentence(); armAuto(); } }),

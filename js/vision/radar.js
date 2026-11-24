@@ -11,6 +11,11 @@ export function colorForDist(d) {
   return '#30d158';
 }
 
+/** خطر قريب يقطع أي جملة فوراً؛ غيره ينتظر دوره ويُسقط لو تأخر أكثر من 3ث (لم يعد صحيحاً) */
+export function radarSpeakOpt(band) {
+  return band.id === 'danger' || band.id === 'occluded' ? { urgent: true } : { maxAgeMs: 3000 };
+}
+
 export const OCCLUDED_TEXT = 'انتبه، شيء قريب جداً من الكاميرا، المسافة غير مؤكدة';
 
 /** فئة النطق: «مغطاة» فئة مستقلة حتى لا تُخلط مع خطر حقيقي ولا تُقال لها أرقام. */
@@ -51,7 +56,7 @@ export class RadarSpeechGate {
     this.hysteresisM = opt.hysteresisM ?? 0.3;
     this.speakFn = opt.speakFn || ((text, speakOpt) => tts.speak(text, speakOpt));
     this.cancelFn = opt.cancelFn || (() => tts.cancel());
-    this.isSpeakingFn = opt.isSpeakingFn || (() => (typeof speechSynthesis !== 'undefined' && !!speechSynthesis.speaking));
+    this.isSpeakingFn = opt.isSpeakingFn || (() => tts.speaking);
 
     this.muted = false;
     this.reset();
@@ -131,7 +136,7 @@ export class RadarSpeechGate {
     this.lastDir = dir;
     this.lastText = text;
     this.spokenCount++;
-    this.speakFn(text, { cancel: true });
+    this.speakFn(text, radarSpeakOpt(band));
     this.lastSpokenAt = stampAfter();
     return { spoke: true, text, bandId: band.id, dir };
   }
@@ -146,7 +151,7 @@ export class RadarSpeechGate {
     this.lastDir = dir;
     this.lastText = text;
     this.spokenCount++;
-    this.speakFn(text, { cancel: true });
+    this.speakFn(text, radarSpeakOpt(band));
     this.lastSpokenAt = explicitNowMs !== undefined ? explicitNowMs : performance.now();
     return { spoke: true, text, bandId: band.id, dir };
   }

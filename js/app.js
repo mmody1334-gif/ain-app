@@ -207,7 +207,7 @@ class App {
       el.append(h1, p1, p2, locP, mapA, close);
       document.body.append(el);
       if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
-      this.say('طوارئ! ' + (data?.name || 'جهاز آخر في الغرفة') + ' يحتاج مساعدة', { rate: 0.85 });
+      this.say('طوارئ! ' + (data?.name || 'جهاز آخر في الغرفة') + ' يحتاج مساعدة', { rate: 0.85, urgent: true });
       setTimeout(() => { el.remove(); offLoc(); }, 60000);
     });
     // زر تحميل تطبيق أندرويد: يظهر في المتصفح فقط، لا داخل التطبيق المثبَّت
@@ -658,9 +658,9 @@ class App {
       langSel.onchange = async (e) => {
         await this.saveSettings({ ttsLang: e.target.value, ttsVoice: '' });
         rebuildVoices();
-        this.say(baseLang() === 'ar' ? 'مرحبًا' : 'Hello');
+        this.say(baseLang() === 'ar' ? 'مرحبًا' : 'Hello', { cancel: true });
       };
-      voiceSel.onchange = async (e) => { await this.saveSettings({ ttsVoice: e.target.value }); this.say(baseLang() === 'ar' ? 'مرحبًا أنا حذيفة، سأصدّ ما تقوله' : 'Hello, I am Hudhaifa', { voiceURI: e.target.value }); };
+      voiceSel.onchange = async (e) => { await this.saveSettings({ ttsVoice: e.target.value }); this.say(baseLang() === 'ar' ? 'مرحبًا أنا حذيفة، سأصدّ ما تقوله' : 'Hello, I am Hudhaifa', { voiceURI: e.target.value, cancel: true }); };
       const speakEach = h('input', { type: 'checkbox', checked: s.speakEach, onchange: (e) => this.saveSettings({ speakEach: e.target.checked }) });
       const skel = h('input', { type: 'checkbox', checked: s.skeleton, onchange: (e) => this.saveSettings({ skeleton: e.target.checked }) });
       const theme = h('div.seg', ['auto', 'light', 'dark'].map((v) => h('button', { type: 'button', 'aria-pressed': String(s.theme === v), onclick: (e) => { this.saveSettings({ theme: v }); theme.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', 'false')); e.currentTarget.setAttribute('aria-pressed', 'true'); } }, { auto: 'تلقائي', light: 'فاتح', dark: 'داكن' }[v])));
@@ -674,7 +674,7 @@ class App {
       const dg = this.cam.diag || {};
       const diagText = `engine=${dg.backend || '-'} video=${dg.video || '-'} frames=${dg.frames || 0} hands=${dg.hands || 0} pose=${dg.pose || 0} errors=${dg.errors || 0} rvfc=${dg.rvfc ? 1 : 0}${dg.lastError ? ' last=' + dg.lastError : ''}`;
       const voiceInfo = tts.supported ? (tts.hasArabic ? 'صوت عربي فصيح متوفر على جهازك.' : 'لا يوجد صوت عربي مثبّت في جهازك؛ ثبّت صوتاً عربياً (فصحى) من إعدادات النظام.') : 'النطق غير مدعوم في هذا المتصفح.';
-      const testBtn = btn('جرّب الصوت', { ic: 'speaker', cls: 'sm', onclick: () => this.say('مرحبًا، أنا حذيفة') });
+      const testBtn = btn('جرّب الصوت', { ic: 'speaker', cls: 'sm', onclick: () => this.say('مرحبًا، أنا حذيفة', { cancel: true }) });
       rebuildLangs(); rebuildGender(); rebuildVoices();
       // الأصوات قد تتأخر عن فتح الإعدادات (خاصة على الجوال)؛ نُعيد البناء عند بلوغها
       tts.onVoicesChanged(() => { rebuildLangs(); rebuildVoices(); });      return h('div', { style: { display: 'flex', flexDirection: 'column', gap: '14px' } },

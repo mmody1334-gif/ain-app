@@ -258,14 +258,14 @@ export function createRayView(app) {
       document.body.append(stealthOverlay);
       if (app.cam.video) app.cam.video.style.opacity = '0';
       if (app.cam.overlay) app.cam.overlay.style.opacity = '0';
-      app.say('تم تفعيل وضع توفير البطارية. السونار يعمل، انقر مرتين للرجوع.');
+      app.say('تم تفعيل وضع توفير البطارية. السونار يعمل، انقر مرتين للرجوع.', { cancel: true });
     } else {
       stealthOverlay?.remove();
       stealthOverlay = null;
       if (app.cam.video) app.cam.video.style.opacity = '1';
       if (app.cam.overlay) app.cam.overlay.style.opacity = '1';
       toast('أُعيدت إضاءة الشاشة', 'ok');
-      app.say('عادت الشاشة للوضع العادي');
+      app.say('عادت الشاشة للوضع العادي', { cancel: true });
     }
   }
 
@@ -278,7 +278,7 @@ export function createRayView(app) {
       return;
     }
     toast('جارٍ فحص ما أمام الكاميرا…');
-    app.say('جارٍ الفحص…');
+    app.say('جارٍ الفحص…', { cancel: true });
 
     const v = app.cam.video;
     const offCanvas = document.createElement('canvas');
@@ -326,11 +326,11 @@ export function createRayView(app) {
       scanResEl.append(
         h('div.pill.ok', { style: { display: 'inline-block' } }, category),
         h('p', { style: { marginTop: '6px', fontSize: '1.05rem', fontWeight: '700' } }, res),
-        btn('أعد النطق بالصوت', { cls: 'ghost sm', ic: 'speaker', onclick: () => app.say(res) })
+        btn('أعد النطق بالصوت', { cls: 'ghost sm', ic: 'speaker', onclick: () => app.say(res, { cancel: true }) })
       );
       scanResEl.hidden = false;
     }
-    app.say(res);
+    app.say(res, { cancel: true });
     toast(category, 'ok');
   }
 

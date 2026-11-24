@@ -129,7 +129,7 @@ export function createListenView(app) {
           btn('انطق كلام الأصم 🔊', {
             cls: 'primary',
             ic: 'speaker',
-            onclick: () => app.say(deafText),
+            onclick: () => app.say(deafText, { cancel: true }),
           }),
           btn('اضغط وتكلّم أنت 🎙️', {
             cls: 'primary',

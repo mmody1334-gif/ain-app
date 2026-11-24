@@ -128,7 +128,7 @@ export function createRoomView(app) {
       body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
         h('div', { style: { fontSize: '1.35rem', fontWeight: '700' } }, '🤲 ' + (text || '')),
         h('div.row', { style: { gap: '6px' } },
-          h('button.btn.sm', { type: 'button', onclick: () => app.say(text) }, icon('speaker'), h('span', 'انطق')),
+          h('button.btn.sm', { type: 'button', onclick: () => app.say(text, { cancel: true }) }, icon('speaker'), h('span', 'انطق')),
           h('button.btn.sm', { type: 'button', onclick: () => showSign(text) }, icon('eye'), h('span', 'شاهد الإشارة'))));
     } else if (kind === 'sos') {
       body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },

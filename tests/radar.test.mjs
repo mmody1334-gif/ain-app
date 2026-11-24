@@ -124,3 +124,10 @@ test('RayEngine + RadarSpeechGate: pocket/dark mode returns dark:true, clears fa
   assert.ok(leftRes.zones.center > 3.0, `Expected clear center >3.0m, got ${leftRes.zones.center}`);
   assert.ok(leftRes.zones.right > 3.0, `Expected clear right >3.0m, got ${leftRes.zones.right}`);
 });
+
+test('radar speech priority: danger/occluded interrupt, other warnings queue and expire after 3s', async () => {
+  const { radarSpeakOpt } = await import(pathToFileURL(path.resolve('js/vision/radar.js')).href);
+  assert.deepEqual(radarSpeakOpt({ id: 'danger' }), { urgent: true });
+  assert.deepEqual(radarSpeakOpt({ id: 'occluded' }), { urgent: true });
+  assert.deepEqual(radarSpeakOpt({ id: 'near' }), { maxAgeMs: 3000 });
+});

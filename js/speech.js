@@ -7,6 +7,54 @@ const synth = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null;
 let voices = [];
 let voicesAt = 0;
 let lastSpoken = { text: '', at: 0 };
+
+// ---- طابور النطق ----
+const QUEUE_MAX = 3;
+let queue = [];
+let active = null;     // الجملة التي تُنطق الآن
+let watchdog = null;   // كروم أندرويد يضيّع حدث onend أحياناً؛ لا نترك الطابور معلّقاً للأبد
+
+function stopActive() {
+  clearTimeout(watchdog);
+  active = null;
+  try { synth?.cancel(); } catch (e) { /* لا شيء */ }
+}
+function playNext(api) {
+  while (queue.length) {
+    const it = queue.shift();
+    if (it.opt.maxAgeMs && Date.now() - it.at > it.opt.maxAgeMs) continue;
+    play(it, api);
+    return;
+  }
+}
+function play(item, api) {
+  const { spoken, opt } = item;
+  const u = new SpeechSynthesisUtterance(spoken);
+  const v = api.pickVoice(opt.voiceURI, opt.lang, opt.gender);
+  u.lang = v ? v.lang : (opt.lang || 'ar-SA');
+  if (v) u.voice = v;
+  u.rate = opt.rate ?? 0.88;
+  u.pitch = opt.pitch ?? 1;
+  u.volume = opt.volume ?? 1;
+  const done = (cb) => (ev) => {
+    if (active !== u) return; // انقطعت عمداً
+    clearTimeout(watchdog);
+    active = null;
+    try { cb?.(ev); } catch (e) { /* لا شيء */ }
+    playNext(api);
+  };
+  u.onend = done(opt.onend);
+  u.onerror = done(opt.onerror);
+  active = u;
+  synth.speak(u);
+  const est = opt.watchdogMs ?? (3000 + (spoken.length * 120) / (u.rate || 1));
+  watchdog = setTimeout(() => {
+    if (active !== u) return;
+    active = null;
+    try { synth.cancel(); } catch (e) { /* لا شيء */ }
+    playNext(api);
+  }, est);
+}
 const voiceCbs = new Set();
 let voiceListenerAdded = false;
 
@@ -171,30 +219,30 @@ export const tts = {
     return [...pool].sort((a, b) => voiceScore(b, pref) - voiceScore(a, pref))[0];
   },
   get hasArabic() { return !!this.pickVoice('', 'ar-SA'); },
+  /**
+   * ينطق نصاً دون قطع جملة جارية (طابور قصير).
+   * opt.urgent: خطر/طوارئ ← يقطع فوراً ويُلغي المنتظر.  opt.cancel: ضغطة «انطق» من المستخدم ← يقطع.
+   * opt.maxAgeMs: يُسقط العنصر إن انتظر أكثر من ذلك (تحذير رادار قديم لم يعد صحيحاً).
+   */
   speak(text, opt = {}) {
     if (!synth || !text) return false;
     try {
       const spoken = opt.fusha === false ? String(text) : toFusha(text);
-      // نفس الكلمة مرتين في أقل من 0.6 ث (حدث مكرر من المحرك ودرس «تعلّم» معاً)
-      // كانت تُلغي النطق الأول قبل أن يُسمع؛ نتجاهل التكرار بدل قطعه.
       const now = Date.now();
-      if (spoken === lastSpoken.text && now - lastSpoken.at < 600 && opt.cancel !== false) return true;
+      const interrupt = !!(opt.urgent || opt.cancel === true);
+      // نفس الكلمة مرتين في أقل من 0.6 ث (حدث مكرر من المحرك ودرس «تعلّم» معاً): نتجاهل التكرار
+      if (!interrupt && spoken === lastSpoken.text && now - lastSpoken.at < 600) return true;
       lastSpoken = { text: spoken, at: now };
-      const u = new SpeechSynthesisUtterance(spoken);
-      const v = this.pickVoice(opt.voiceURI, opt.lang, opt.gender);
-      u.lang = v ? v.lang : (opt.lang || 'ar-SA');
-      if (v) u.voice = v;
-      u.rate = opt.rate ?? 0.88;
-      u.pitch = opt.pitch ?? 1;
-      u.volume = opt.volume ?? 1;
-      if (opt.cancel !== false) synth.cancel();
-      if (opt.onend) u.onend = opt.onend;
-      if (opt.onerror) u.onerror = opt.onerror;
-      synth.speak(u);
+      const item = { spoken, opt, at: now };
+      if (interrupt) { queue = []; stopActive(); play(item, this); return true; }
+      if (!active && !synth.speaking) { play(item, this); return true; }
+      queue.push(item);
+      if (queue.length > QUEUE_MAX) queue.splice(0, queue.length - QUEUE_MAX); // نُبقي الأحدث
       return true;
     } catch (e) { return false; }
   },
-  cancel() { try { synth?.cancel(); } catch (e) { /* لا شيء */ } },
+  get speaking() { return !!active || !!synth?.speaking; },
+  cancel() { queue = []; stopActive(); },
   /** يُستدعى عند تغيّر الأصوات؛ مستمع واحد مشترك مهما فُتحت الإعدادات مرات. */
   onVoicesChanged(cb) {
     if (!synth) return;
