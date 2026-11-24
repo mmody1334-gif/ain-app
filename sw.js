@@ -6,13 +6,15 @@ const SHELL = ['./', 'index.html', 'vision-preview.html', 'css/style.css', 'mani
   'js/hand3d.js', 'js/anims.js', 'js/learn.js', 'js/recorder.js', 'js/commands.js', 'js/names.js', 'js/pcexport.js', 'js/course_data.js', 'js/room.js', 'js/journey.js', 'js/sfx.js', 'js/sentence.js',
   'js/depth.js', 'js/views/ray.js', 'js/views/translate.js', 'js/views/listen.js', 'js/views/learn.js', 'js/views/dict.js', 'js/views/commands.js', 'js/views/course.js',
   'js/views/streak.js', 'js/views/namesign.js', 'js/views/room.js'];
+// النماذج الثقيلة في مخزن مستقل لا يُمسح مع كل إصدار (كانت ~13MB تُعاد تنزيلاً بعد كل تحديث)
+const MODELS = 'ain-models-v1';
 const HEAVY = /(cdn\.jsdelivr\.net\/npm\/@mediapipe|storage\.googleapis\.com\/mediapipe-models|\/vendor\/)/;
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VERSION && k !== MODELS).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', (e) => {
   const req = e.request;
@@ -21,9 +23,11 @@ self.addEventListener('fetch', (e) => {
   const same = url.origin === self.location.origin;
   if (same && !HEAVY.test(req.url)) {
     // الشبكة أولاً ثم النسخة المخزَّنة (يحصل المطوّر على آخر نسخة، ويعمل بلا إنترنت)
-    e.respondWith(fetch(req).then((r) => { const cp = r.clone(); caches.open(VERSION).then((c) => c.put(req, cp)); return r; }).catch(() => caches.match(req).then((m) => m || caches.match('index.html'))));
+    // لا نخزّن صفحات الخطأ (404/500) مكان الملفات الحقيقية، ولا نعيد index.html بدل ملف JS
+    e.respondWith(fetch(req).then((r) => { if (r.ok && r.type === 'basic') { const cp = r.clone(); caches.open(VERSION).then((c) => c.put(req, cp)); } return r; })
+      .catch(() => caches.match(req).then((m) => m || (req.mode === 'navigate' ? caches.match('index.html') : Response.error()))));
   } else if (HEAVY.test(req.url)) {
     // ملفات MediaPipe الثقيلة: من المخزن أولاً
-    e.respondWith(caches.match(req).then((m) => m || fetch(req).then((r) => { if (r.ok) { const cp = r.clone(); caches.open(VERSION).then((c) => c.put(req, cp)); } return r; })));
+    e.respondWith(caches.match(req).then((m) => m || fetch(req).then((r) => { if (r.ok) { const cp = r.clone(); caches.open(MODELS).then((c) => c.put(req, cp)); } return r; })));
   }
 });
