@@ -223,7 +223,10 @@ export function createRoomView(app) {
 
   // ---------- أفعال ----------
   async function createRoom() {
-    const code = String(Math.floor(100000 + Math.random() * 900000));
+    // 8 خانات عشوائية آمنة (~850 مليار احتمال): كود من 6 أرقام كان يمكن تخمينه وقراءة رسائل الغرفة ومواقع الطوارئ
+    const ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // بلا 0/O و1/I لتجنّب اللبس
+    const rnd = crypto.getRandomValues(new Uint32Array(8));
+    const code = Array.from(rnd, (n) => ABC[n % ABC.length]).join('');
     await room.join(code);
     await app.store.setMeta('last_room', code);
     toast('غرفة جديدة: ' + code, 'ok');
@@ -232,7 +235,7 @@ export function createRoomView(app) {
 
   function joinRoom() {
     sheet('انضم لغرفة', (close) => {
-      const inp = h('input', { type: 'text', placeholder: 'كود الغرفة', maxlength: '8', inputmode: 'numeric', style: { fontSize: '2rem', textAlign: 'center', letterSpacing: '0.4em' } });
+      const inp = h('input', { type: 'text', placeholder: 'كود الغرفة', maxlength: '8', inputmode: 'text', autocapitalize: 'characters', autocomplete: 'off', spellcheck: false, dir: 'ltr', style: { fontSize: '2rem', textAlign: 'center', letterSpacing: '0.3em' } });
       const go = async () => {
         const code = inp.value.trim();
         if (!code || code.length < 3) { toast('أدخل الكود', 'bad'); return; }

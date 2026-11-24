@@ -17,6 +17,7 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
 const MAX_MSGS = 300;                 // سجل الغرفة
 const KEEP_MS = 30 * 86400000;        // الرسائل تبقى 30 يوماً
 const ROOM_TTL = 90 * 86400000;       // الغرفة تُمحى بعد 90 يوماً بلا نشاط
+const LOC_KEEP_MS = 86400000;         // الموقع الجغرافي يُمحى من الرسائل بعد 24 ساعة (خصوصية)
 const ONLINE_HTTP_MS = 20000;         // جهاز يستقصي عبر HTTP يُعدّ متصلاً 20 ثانية بعد آخر طلب
 const TYPES = new Set(['sign', 'sentence', 'msg', 'sos', 'loc']);
 
@@ -87,6 +88,9 @@ export class Room {
   _trim() {
     const now = Date.now();
     this.log = this.log.filter((m) => now - m.at < KEEP_MS);
+    for (const m of this.log) {
+      if (m.lat !== undefined && now - m.at >= LOC_KEEP_MS) { delete m.lat; delete m.lng; delete m.acc; m.locExpired = true; }
+    }
     if (this.log.length > MAX_MSGS) this.log = this.log.slice(-MAX_MSGS);
     this.members = this.members.filter((m) => now - (m.at || 0) < ROOM_TTL).slice(-20);
   }
@@ -149,8 +153,11 @@ export class Room {
   }
 
   _after(seq, since) {
-    if (seq > 0) return this.log.filter((m) => m.seq > seq);
-    return this.log.filter((m) => m.at > since);
+    const now = Date.now();
+    const out = seq > 0 ? this.log.filter((m) => m.seq > seq) : this.log.filter((m) => m.at > since);
+    // حتى لو لم تُكتب رسائل جديدة: لا نرسل موقعاً أقدم من 24 ساعة
+    return out.map((m) => (m.lat !== undefined && now - m.at >= LOC_KEEP_MS)
+      ? (({ lat, lng, acc, ...rest }) => ({ ...rest, locExpired: true }))(m) : m);
   }
 
   // ---------- HTTP + ترقية WebSocket ----------
