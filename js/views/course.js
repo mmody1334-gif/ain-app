@@ -1,7 +1,7 @@
 // دروس: كورس تعليمي متسلسل — بنية الوحدات والخطوات في course_data.js.
 // تقدم الكورس محفوظ محلياً في meta «courseProgress»، والتحديات تستعير
 // نفس عتاد «تعلّم»: مقارنة القياس الحيّ، والشكل الجاهز، وأفاتار اليد.
-import { h, btn, icon, toast } from '../ui.js';
+import { h, btn } from '../ui.js';
 import { UNITS } from '../course_data.js';
 import { compareToTarget } from '../learn.js';
 import { shapePose } from '../handModel.js';

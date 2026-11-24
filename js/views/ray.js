@@ -2,7 +2,7 @@
 // يطلق شعاعاً افتراضياً لقراءة المسافة للجدران والعوائق مع رادار صوتي ونطق عربي فوري.
 // يدعم الاقتران اللاسلكي بالنظارة الذكية عبر Web Bluetooth (BLE).
 
-import { h, btn, icon, toast } from '../ui.js';
+import { h, btn, toast } from '../ui.js';
 import { RayEngine } from '../depth.js';
 import { RadarSpeechGate, RadarHaptics } from '../vision/radar.js';
 

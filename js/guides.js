@@ -1,5 +1,5 @@
 // دليل الاستخدام وإرشادات الأقسام التفاعلية لتطبيق عين
-import { h, btn, icon, toast, sheet, haptic } from './ui.js';
+import { h, btn, toast, sheet, haptic } from './ui.js';
 
 export const SECTION_GUIDES = {
   translate: {
