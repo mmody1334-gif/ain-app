@@ -10,8 +10,12 @@ __pycache__/
 .env*
 !.env.example
 
-# مجلد النشر المؤقت
+# مجلد النشر المؤقت والملفات غير المنشورة
 _deploy/
+android-native/
+scratch/
+videos/
+pc/hand_landmarker.task
 android/.gradle/
 android/app/build/
 android/build/

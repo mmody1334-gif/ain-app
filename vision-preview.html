@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>عين — معاينة المحرك الجديد (الخطوة 4)</title>
+  <style>
+    :root { --bg:#101019; --surface:#1a1a29; --surface2:#232336; --ink:#ecebf8; --muted:#9a98b3; --accent:#4640d4; --ok:#3ccb8e; --bad:#ff7b60; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,'Segoe UI',sans-serif; display:flex; flex-direction:column; min-height:100dvh; }
+    header { padding:10px 14px; display:flex; justify-content:space-between; align-items:center; background:var(--surface); gap:8px; }
+    header h1 { margin:0; font-size:1rem; }
+    .pill { background:var(--surface2); padding:4px 10px; border-radius:99px; font-size:.8rem; font-family:monospace; direction:ltr; }
+    .stage { position:relative; flex:1; min-height:300px; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+    video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
+    .result-banner { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:rgba(20,20,36,.88); border:2px solid var(--ok); padding:8px 20px; border-radius:16px; text-align:center; min-width:190px; pointer-events:none; }
+    .result-word { font-size:1.7rem; font-weight:800; color:#fff; }
+    .result-conf { font-size:.82rem; color:var(--ok); font-family:monospace; direction:ltr; }
+    .no-hand-banner { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:rgba(20,20,36,.88); border:1px solid #f0b429; color:#ffe6a7; padding:8px 16px; border-radius:14px; text-align:center; font-size:.95rem; font-weight:600; max-width:90%; pointer-events:none; }
+    .countdown { position:absolute; font-size:5rem; font-weight:900; color:#fff; text-shadow:0 4px 20px rgba(0,0,0,.8); pointer-events:none; }
+    .train-panel { background:var(--surface); border-top:1px solid #2d2d44; padding:12px 14px; display:flex; flex-direction:column; gap:10px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    input[type="text"] { flex:1; min-height:42px; border-radius:10px; border:1px solid #353552; background:var(--surface2); color:var(--ink); padding:0 12px; font-size:1rem; }
+    .seg { display:flex; gap:6px; }
+    .seg button { flex:1; min-height:38px; font-size:.9rem; background:var(--surface2); color:var(--ink); border:1px solid #353552; }
+    .seg button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .meter { height:10px; background:var(--surface2); border-radius:99px; overflow:hidden; }
+    .meter > i { display:block; height:100%; width:0%; background:var(--ok); transition:width 60ms linear; }
+    .hint { font-size:.9rem; color:var(--muted); margin:0; }
+    footer { padding:10px 14px; display:flex; gap:8px; background:var(--surface); border-top:1px solid #2d2d44; }
+    button { flex:1; min-height:44px; border:0; border-radius:10px; font-size:.95rem; font-weight:700; cursor:pointer; }
+    .primary { background:var(--accent); color:#fff; }
+    .ok { background:var(--ok); color:#0c1f17; }
+    .ghost { background:var(--surface2); color:var(--ink); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>عين — الخطوة 4 (سجّل إشارتك)</h1>
+    <span class="pill" id="stats">جاهز</span>
+  </header>
+  <div class="stage">
+    <video id="vid" playsinline muted></video>
+    <canvas id="ov"></canvas>
+    <div class="countdown" id="cdEl" hidden></div>
+    <div class="result-banner" id="banner" hidden>
+      <div class="result-word" id="wordEl">—</div>
+      <div class="result-conf" id="confEl"></div>
+    </div>
+    <div class="no-hand-banner" id="noHandEl" hidden>لم يتم العثور على يد — أظهر يدك بوضوح أمام الكاميرا في إضاءة جيدة</div>
+  </div>
+  <section class="train-panel" id="trainPanel" hidden>
+    <div class="row">
+      <input type="text" id="signWord" placeholder="اكتب اسم الإشارة (مثلاً: ماء، مرحبا…)" />
+    </div>
+    <div class="seg" id="modeSeg">
+      <button type="button" data-mode="one" aria-pressed="true">يد واحدة</button>
+      <button type="button" data-mode="two" aria-pressed="false">يدين معاً</button>
+      <button type="button" data-mode="motion" aria-pressed="false">حركة</button>
+    </div>
+    <div class="meter"><i id="progBar"></i></div>
+    <p class="hint" id="trainHint">اكتب الاسم واختر النوع ثم اضغط «ابدأ التسجيل».</p>
+    <div class="row">
+      <button class="primary" id="recStartBtn">ابدأ التسجيل</button>
+      <button class="ok" id="saveSignBtn" hidden>حفظ في الجهاز ✓</button>
+      <button class="ghost" id="closeTrainBtn">إغلاق</button>
+    </div>
+  </section>
+  <footer>
+    <button class="primary" id="startBtn">تشغيل الكاميرا</button>
+    <button class="ok" id="openTrainBtn">سجّل إشارتك</button>
+    <button class="ghost" id="flipBtn">قلب</button>
+    <button class="ghost" id="modeBtn">GPU</button>
+  </footer>
+  <script type="module">
+    import { VisionCapture } from './js/vision/capture.js';
+    import { VisionSmoother } from './js/vision/smooth.js';
+    import { StaticClassifier, extractFeatures, fingerStates3 } from './js/vision/classify.js';
+    import { SignTrainer } from './js/vision/train.js';
+    import { Store } from './js/store.js';
+
+    const stats = document.getElementById('stats');
+    const startBtn = document.getElementById('startBtn');
+    const flipBtn = document.getElementById('flipBtn');
+    const modeBtn = document.getElementById('modeBtn');
+    const openTrainBtn = document.getElementById('openTrainBtn');
+    const trainPanel = document.getElementById('trainPanel');
+    const signWord = document.getElementById('signWord');
+    const modeSeg = document.getElementById('modeSeg');
+    const progBar = document.getElementById('progBar');
+    const trainHint = document.getElementById('trainHint');
+    const recStartBtn = document.getElementById('recStartBtn');
+    const saveSignBtn = document.getElementById('saveSignBtn');
+    const closeTrainBtn = document.getElementById('closeTrainBtn');
+    const cdEl = document.getElementById('cdEl');
+    const banner = document.getElementById('banner');
+    const wordEl = document.getElementById('wordEl');
+    const confEl = document.getElementById('confEl');
+    const noHandEl = document.getElementById('noHandEl');
+
+    const smoother = new VisionSmoother(1.2, 8.0);
+    const clf = new StaticClassifier({ k: 5, voteWindow: 5, confThreshold: 0.7 });
+    const trainer = new SignTrainer();
+    const store = new Store();
+
+    let starterSigns = [];
+    let userSigns = [];
+    let recMode = 'one';
+    let draftSign = null; // شاشة «جرّب الآن» قبل/بعد الحفظ
+
+    function reloadClassifier(extra = null) {
+      const all = [...starterSigns, ...userSigns, ...(extra ? [extra] : [])];
+      clf.loadSigns(all);
+    }
+
+    (async () => {
+      await store.open();
+      try {
+        const d = await fetch('./data/starter.json').then((r) => r.json());
+        starterSigns = Array.isArray(d) ? d : (d.signs || []);
+      } catch (_) {}
+      userSigns = await store.allSigns();
+      reloadClassifier();
+    })();
+
+    modeSeg.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-mode]');
+      if (!b) return;
+      recMode = b.dataset.mode;
+      modeSeg.querySelectorAll('button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    });
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    const cap = new VisionCapture(document.getElementById('vid'), document.getElementById('ov'), {
+      fit: 'contain',
+      transformHands: (hands, t) => smoother.smooth(hands, t),
+      onStatus: (s) => { stats.textContent = s; },
+      onFrame: (f) => {
+        const labels = f.hands.map((h) => {
+          if (!h.hand) return '?';
+          return f.mirrored ? (h.hand === 'Left' ? 'R' : 'L') : (h.hand === 'Left' ? 'L' : 'R');
+        }).join('+') || '-';
+        stats.textContent = `${f.backend} · ${f.fps}fps · ${f.detectMs}ms · ${f.hands.length}H(${labels})`;
+        modeBtn.textContent = f.backend || 'GPU';
+
+        if (trainer.active) {
+          noHandEl.hidden = true;
+          const st = trainer.pushFrame(f);
+          progBar.style.width = `${Math.round(st.progress * 100)}%`;
+          trainHint.textContent = `${st.hint} (${st.count}/${st.target})`;
+          if (st.done) {
+            draftSign = trainer.buildSign(signWord.value);
+            recStartBtn.disabled = false;
+            if (draftSign) {
+              reloadClassifier(draftSign);
+              saveSignBtn.hidden = false;
+              trainHint.textContent = `جرّب الآن! أرِ الكاميرا «${draftSign.word}» لترى الثقة الفورية، ثم اضغط «حفظ في الجهاز».`;
+            } else {
+              trainHint.textContent = 'عيّنات قليلة جداً — تأكد من ظهور اليد وأعد المحاولة.';
+            }
+          }
+          return;
+        }
+
+        const pred = clf.predict(f.hands, f.aspect);
+        const bits = f.hands[0] ? fingerStates3(extractFeatures(f.hands[0].lm, f.aspect)).join('') : '';
+        if (!f.hands.length) {
+          banner.hidden = true;
+          noHandEl.hidden = false;
+          noHandEl.textContent = (f.backend === 'GPU' && cap.isMobile && !cap._everSawHandOnGpu && !cap._manualBackend)
+            ? 'جاري فحص اليد على GPU… لو لم تظهر سيتم التحويل تلقائياً إلى CPU'
+            : 'لم يتم العثور على يد — أظهر يدك بوضوح أمام الكاميرا في إضاءة جيدة';
+        } else if (pred.word) {
+          noHandEl.hidden = true;
+          banner.hidden = false;
+          wordEl.textContent = pred.word;
+          confEl.textContent = `${Math.round(pred.conf * 100)}% · ${bits}`;
+        } else {
+          noHandEl.hidden = true;
+          banner.hidden = false;
+          wordEl.textContent = 'غير معروف';
+          confEl.textContent = bits;
+        }
+      },
+    });
+
+    startBtn.onclick = async () => {
+      if (cap.running) { cap.stop(); smoother.reset(); clf.reset(); banner.hidden = true; noHandEl.hidden = true; startBtn.textContent = 'تشغيل الكاميرا'; stats.textContent = 'متوقف'; return; }
+      startBtn.disabled = true;
+      try { await cap.start(); startBtn.textContent = 'إيقاف'; }
+      catch (e) { stats.textContent = 'خطأ: ' + (e.message || e); }
+      finally { startBtn.disabled = false; }
+    };
+    flipBtn.onclick = () => { if (cap.running) { smoother.reset(); clf.reset(); cap.flip(); } };
+    modeBtn.onclick = async () => {
+      const next = (cap.backend || cap.preferredBackend) === 'GPU' ? 'CPU' : 'GPU';
+      modeBtn.disabled = true;
+      try { smoother.reset(); clf.reset(); await cap.setBackend(next); modeBtn.textContent = cap.backend || next; }
+      finally { modeBtn.disabled = false; }
+    };
+
+    openTrainBtn.onclick = async () => {
+      trainPanel.hidden = !trainPanel.hidden;
+      if (!trainPanel.hidden && !cap.running) {
+        try { await cap.start(); startBtn.textContent = 'إيقاف'; } catch (_) {}
+      }
+    };
+    closeTrainBtn.onclick = () => {
+      trainer.reset();
+      draftSign = null;
+      saveSignBtn.hidden = true;
+      progBar.style.width = '0%';
+      reloadClassifier();
+      trainPanel.hidden = true;
+    };
+
+    recStartBtn.onclick = async () => {
+      const w = signWord.value.trim();
+      if (!w) { signWord.focus(); trainHint.textContent = 'اكتب اسم الإشارة أولاً.'; return; }
+      if (!cap.running) await cap.start();
+      draftSign = null;
+      saveSignBtn.hidden = true;
+      recStartBtn.disabled = true;
+      progBar.style.width = '0%';
+      for (const n of [3, 2, 1]) {
+        cdEl.hidden = false;
+        cdEl.textContent = String(n);
+        trainHint.textContent = `استعد… ${n}`;
+        await sleep(700);
+      }
+      cdEl.hidden = true;
+      trainer.start(recMode);
+    };
+
+    saveSignBtn.onclick = async () => {
+      if (!draftSign) return;
+      await store.putSign(draftSign);
+      userSigns = await store.allSigns();
+      const savedWord = draftSign.word;
+      draftSign = null;
+      reloadClassifier();
+      saveSignBtn.hidden = true;
+      progBar.style.width = '0%';
+      trainHint.textContent = `تم حفظ «${savedWord}» في الجهاز ✓ — جرّبها الآن مباشرة!`;
+    };
+  </script>
+</body>
+</html>

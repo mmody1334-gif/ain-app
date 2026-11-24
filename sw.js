@@ -1,6 +1,7 @@
 // عين — عامل خدمة بسيط: يخزّن واجهة التطبيق ليعمل بلا إنترنت بعد أول زيارة.
-const VERSION = 'ain-v31';
-const SHELL = ['./', 'index.html', 'css/style.css', 'manifest.webmanifest', 'data/starter.json', 'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+const VERSION = 'ain-v45';
+const SHELL = ['./', 'index.html', 'vision-preview.html', 'css/style.css', 'manifest.webmanifest', 'data/starter.json', 'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png',
+  'js/vision/capture.js', 'js/vision/smooth.js', 'js/vision/classify.js', 'js/vision/train.js',
   'js/app.js', 'js/ui.js', 'js/guides.js', 'js/store.js', 'js/engine.js', 'js/camera.js', 'js/speech.js', 'js/arabic.js', 'js/features.js', 'js/smooth.js', 'js/classifier.js', 'js/pairmodel.js', 'js/motion.js', 'js/handModel.js', 'js/calibrate.js', 'js/alphabet.js',
   'js/hand3d.js', 'js/anims.js', 'js/learn.js', 'js/recorder.js', 'js/commands.js', 'js/names.js', 'js/pcexport.js', 'js/course_data.js', 'js/room.js', 'js/journey.js', 'js/sfx.js', 'js/sentence.js',
   'js/depth.js', 'js/views/ray.js', 'js/views/translate.js', 'js/views/listen.js', 'js/views/learn.js', 'js/views/dict.js', 'js/views/commands.js', 'js/views/course.js',

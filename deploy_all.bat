@@ -5,7 +5,7 @@ cd /d "%~dp0"
 git pull
 if exist _deploy rmdir /s /q _deploy
 mkdir _deploy
-robocopy . _deploy /E /XD .git _deploy sync-worker pc demo android .github node_modules .wrangler /XF *.bat *.md wrangler.jsonc netlify.toml .gitignore >nul
+robocopy . _deploy /E /XD .git _deploy sync-worker pc demo android android-native .github .agents tests node_modules .wrangler videos scratch /XF *.bat *.md wrangler.jsonc netlify.toml .gitignore >nul
 echo ===== نشر الموقع =====
 call npx wrangler deploy
 echo ===== نشر خادم الغرف =====
