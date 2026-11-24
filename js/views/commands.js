@@ -66,7 +66,7 @@ export function createCommandsView(app) {
     cfg.phrases.forEach((p, i) => list.append(h('div.item', h('div.grow', h('div.ttl', { style: { whiteSpace: 'normal' } }, p.text), h('div.meta', 'الإيماءة: ' + gestureLabel(app, p.key))),
       h('button.iconbtn', { 'aria-label': 'جرّب', onclick: () => showPhrase(p.text) }, icon('play')),
       h('button.iconbtn', { 'aria-label': 'حذف', onclick: () => { cfg.phrases.splice(i, 1); save(); renderPhrases(); } }, icon('trash')))));
-    const gSel = h('select', gestureOptions(app).map((o) => h('option', { value: o.key }, o.label)));
+    const gSel = h('select', { 'aria-label': 'الإيماءة التي تنطق الجملة' }, gestureOptions(app).map((o) => h('option', { value: o.key }, o.label)));
     const tx = h('input', { type: 'text', placeholder: 'نص الجملة' });
     const chips = h('div.row', { style: { gap: '6px' } }, PHRASE_PRESETS.map((t) => h('button.btn.sm', { type: 'button', onclick: () => { tx.value = t; } }, t)));
     phrasesEl.append(list, h('div.sep'), h('label.field', h('span', 'الإيماءة'), gSel), h('label.field', h('span', 'الجملة'), tx), chips,
@@ -83,7 +83,7 @@ export function createCommandsView(app) {
     const s = cfg.sos;
     const en = h('input', { type: 'checkbox', checked: s.enabled, onchange: (e) => { s.enabled = e.target.checked; siren.prime(); if (s.enabled && s.location) askLocation(); save(); } });
     const fabSw = h('input', { type: 'checkbox', checked: s.bubble !== false, onchange: (e) => { s.bubble = e.target.checked; save(); applyFab(); } });
-    const gSel = h('select', h('option', { value: '' }, 'اختر إيماءة'), gestureOptions(app).map((o) => h('option', { value: o.key, selected: o.key === s.key }, o.label)));
+    const gSel = h('select', { 'aria-label': 'إيماءة الطوارئ' }, h('option', { value: '' }, 'اختر إيماءة'), gestureOptions(app).map((o) => h('option', { value: o.key, selected: o.key === s.key }, o.label)));
     gSel.onchange = () => { s.key = gSel.value || null; save(); };
     const phone = h('input', { type: 'tel', value: s.phone, placeholder: 'رقم شخص تثق به (اختياري)', dir: 'ltr', oninput: (e) => { s.phone = e.target.value; save(); } });
     const msg = h('textarea', { oninput: (e) => { s.message = e.target.value; save(); } }, s.message);
@@ -233,12 +233,12 @@ export function createCommandsView(app) {
     pcBox.innerHTML = '';
     const pc = cfg.pc;
     const opts = gestureOptions(app);
-    const sel = (value, onchange, optList) => { const s = h('select', optList.map((o) => h('option', { value: o.key ?? o.id, selected: (o.key ?? o.id) === value }, o.label))); s.onchange = () => onchange(s.value); return s; };
+    const sel = (value, onchange, optList, label) => { const s = h('select', { 'aria-label': label }, optList.map((o) => h('option', { value: o.key ?? o.id, selected: (o.key ?? o.id) === value }, o.label))); s.onchange = () => onchange(s.value); return s; };
     const secs = h('input', { type: 'text', inputMode: 'numeric', value: String(pc.armSeconds), onchange: (e) => { pc.armSeconds = Math.max(5, Math.min(300, +e.target.value || 25)); e.target.value = pc.armSeconds; save(); } });
     const always = h('input', { type: 'checkbox', checked: !!pc.alwaysArm, onchange: (e) => { pc.alwaysArm = e.target.checked; save(); arm.setConfig(pc); renderArm(); } });
     const rows = h('div.list');
     pc.bindings.forEach((b, i) => rows.append(h('div.item', { style: { flexDirection: 'column', alignItems: 'stretch', gap: '6px' } },
-      sel(b.key, (v) => { b.key = v; save(); }, opts), h('div.row', h('div.grow', sel(b.action, (v) => { b.action = v; save(); }, ACTIONS)), h('button.iconbtn', { 'aria-label': 'حذف', onclick: () => { pc.bindings.splice(i, 1); save(); renderPc(); } }, icon('trash'))))));
+      sel(b.key, (v) => { b.key = v; save(); }, opts, 'الإيماءة'), h('div.row', h('div.grow', sel(b.action, (v) => { b.action = v; save(); }, ACTIONS, 'الأمر على الكمبيوتر')), h('button.iconbtn', { 'aria-label': 'حذف', onclick: () => { pc.bindings.splice(i, 1); save(); renderPc(); } }, icon('trash'))))));
     simEl = h('div.card', { style: { alignItems: 'center', textAlign: 'center', background: 'var(--surface2)' } }, h('span.small.muted', 'محاكاة داخل المتصفح (لا تضغط أزرار حاسوبك)'), h('div.bigword.n', `${slide} / 8`), h('span.kbd.k', '—'));
     armEl = h('span.chip-status', '');
     // ضبط سريع لتنقّل الشرائح: اليسار = التالي، اليمين = السابق

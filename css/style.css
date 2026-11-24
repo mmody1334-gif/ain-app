@@ -2,7 +2,8 @@
 :root {
   --bg: #f3f1ea; --surface: #ffffff; --surface2: #ece9df; --ink: #1c1a33; --muted: #6a6880; --line: #ded9cc;
   --accent: #4640d4; --accent-ink: #ffffff; --accent-soft: #e4e2fb;
-  --amber: #e89a1d; --amber-soft: #fbeccd; --ok: #14925f; --ok-soft: #d6f1e5; --bad: #cf3f27; --bad-soft: #fadcd5;
+  /* #9a5a00: تباين 5.5 مع الأبيض (كان #e89a1d = 2.3 لا يقرؤه ضعيف النظر) */
+  --amber: #9a5a00; --amber-soft: #fbeccd; --ok: #14925f; --ok-soft: #d6f1e5; --bad: #cf3f27; --bad-soft: #fadcd5;
   --shadow: 0 1px 2px rgba(28,26,51,.06), 0 6px 18px rgba(28,26,51,.07);
   --radius: 18px; --nav-h: 64px;
   --font-title: 'Reem Kufi', 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'DejaVu Sans', sans-serif;
@@ -478,7 +479,7 @@ main > .view > h2, #view-learn > div > h2 { font-size: 1.15rem; }
   to { opacity: 1; transform: translateY(0); }
 }
 .tab-intro-head { display: flex; align-items: flex-start; gap: 10px; }
-.tab-intro-head h3 { font-size: 1.05rem; color: var(--ink); }
+.tab-intro-head h2, .tab-intro-head h3 { font-size: 1.05rem; color: var(--ink); }
 .tab-intro-head p { font-size: .84rem; color: var(--muted); margin-top: 3px; line-height: 1.4; }
 .tab-intro-tips {
   margin: 0; padding-inline-start: 18px;

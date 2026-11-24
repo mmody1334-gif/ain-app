@@ -143,7 +143,7 @@ export async function checkSectionIntro(app, tabId, root) {
   const card = h('div.tab-intro-card', { dataset: { tab: tabId } },
     h('div.tab-intro-head',
       h('div.tab-intro-titles',
-        h('h3', guide.title),
+        h('h2', guide.title),
         h('p', guide.desc))),
     tipsList,
     h('div.tab-intro-foot', closeBtn)
