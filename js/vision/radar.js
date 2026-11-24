@@ -11,7 +11,16 @@ export function colorForDist(d) {
   return '#30d158';
 }
 
+export const OCCLUDED_TEXT = 'انتبه، شيء قريب جداً من الكاميرا، المسافة غير مؤكدة';
+
+/** فئة النطق: «مغطاة» فئة مستقلة حتى لا تُخلط مع خطر حقيقي ولا تُقال لها أرقام. */
+function bandFor(target, prevId, hyst) {
+  if (target.occluded) return { id: 'occluded', text: 'قريب جداً' };
+  return quantizeDistanceBand(target.dist, prevId === 'occluded' ? null : prevId, hyst);
+}
+
 export function buildRadarWarningText(target, band) {
+  if (target?.occluded || band?.id === 'occluded') return OCCLUDED_TEXT;
   if (!target || band.id === 'clear') {
     return 'المسار أمامك سالك';
   }
@@ -88,7 +97,7 @@ export class RadarSpeechGate {
       return { spoke: false, reason: 'muted', pocket: false };
     }
 
-    const band = quantizeDistanceBand(target.dist, this.lastBandId, this.hysteresisM);
+    const band = bandFor(target, this.lastBandId, this.hysteresisM);
     const dir = band.id === 'clear' ? 'center' : (target.dir || 'center');
     const text = buildRadarWarningText(target, band);
 
@@ -101,7 +110,7 @@ export class RadarSpeechGate {
       this.lastDir = dir;
       this.lastText = text;
       this.spokenCount++;
-      this.speakFn(text, { cancel: band.id === 'danger' });
+      this.speakFn(text, { cancel: band.id === 'danger' || band.id === 'occluded' });
       this.lastSpokenAt = stampAfter();
       return { spoke: true, text, bandId: band.id, dir };
     }
@@ -128,7 +137,7 @@ export class RadarSpeechGate {
 
   speakNow(target, explicitNowMs) {
     if (this.muted || !target) return { spoke: false, reason: 'muted' };
-    const band = quantizeDistanceBand(target.dist, this.lastBandId, this.hysteresisM);
+    const band = bandFor(target, this.lastBandId, this.hysteresisM);
     const dir = band.id === 'clear' ? 'center' : (target.dir || 'center');
     const text = buildRadarWarningText(target, band);
     this.hasSpoken = true;
@@ -354,10 +363,25 @@ export function renderRadarOverlay(ctx, w, h, target, mirroredVideo = false) {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(z.x - pillW / 2, topZoneY, pillW, 24);
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(`${z.name}: ${z.val.toFixed(1)}م`, z.x, topZoneY + 16);
+    ctx.fillText(target.occluded ? `${z.name}: قريب جداً` : `${z.name}: ${z.val.toFixed(1)}م`, z.x, topZoneY + 16);
   }
 
   if (target.dark) {
+    ctx.restore();
+    return;
+  }
+
+  if (target.occluded) {
+    const msg = 'قريب جداً · المسافة غير مؤكدة';
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    const tw = Math.min(w - 20, ctx.measureText(msg).width + 24);
+    ctx.fillStyle = 'rgba(10, 12, 24, 0.88)';
+    ctx.fillRect(cx - tw / 2, cy - 18, tw, 34);
+    ctx.strokeStyle = '#ff453a';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cx - tw / 2, cy - 18, tw, 34);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(msg, cx, cy + 5);
     ctx.restore();
     return;
   }

@@ -1,5 +1,5 @@
 // عين — عامل خدمة بسيط: يخزّن واجهة التطبيق ليعمل بلا إنترنت بعد أول زيارة.
-const VERSION = 'ain-v46';
+const VERSION = 'ain-v47';
 const SHELL = ['./', 'index.html', 'vision-preview.html', 'css/style.css', 'manifest.webmanifest', 'data/starter.json', 'icons/logo.svg', 'icons/icon-192.png', 'icons/icon-512.png',
   'js/vision/capture.js', 'js/vision/smooth.js', 'js/vision/classify.js', 'js/vision/train.js', 'js/vision/radar.js',
   'js/app.js', 'js/ui.js', 'js/guides.js', 'js/store.js', 'js/engine.js', 'js/camera.js', 'js/speech.js', 'js/arabic.js', 'js/features.js', 'js/smooth.js', 'js/classifier.js', 'js/pairmodel.js', 'js/motion.js', 'js/handModel.js', 'js/calibrate.js', 'js/alphabet.js',

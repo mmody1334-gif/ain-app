@@ -83,6 +83,39 @@ export function formatDistanceAr(d) {
   return 'أكثر من أربعة أمتار';
 }
 
+export const VERY_CLOSE_M = 0.3;
+const LOW_CONF_SCORE = 0.5;
+const FILL_AREA = 0.55;
+
+/**
+ * إحصاءات تغطية الإطار: نسبة بكسلات لون الجلد (YCbCr) ومتوسط التباين بين البكسلات المتجاورة.
+ * كف ملاصق للعدسة = جلد يملأ الصورة + تفاصيل شبه معدومة (ضبابي).
+ */
+export function frameCoverageStats(imgData, step = 4) {
+  const { width: cw, height: ch, data } = imgData;
+  let n = 0, skin = 0, gradSum = 0, gradN = 0;
+  const lum = (i) => data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+  for (let y = 0; y < ch - step; y += step) {
+    for (let x = 0; x < cw - step; x += step) {
+      const i = (y * cw + x) * 4;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b;
+      const cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+      if (cb >= 77 && cb <= 127 && cr >= 133 && cr <= 173) skin++;
+      n++;
+      const l = lum(i);
+      gradSum += Math.abs(l - lum(i + step * 4)) + Math.abs(l - lum(i + step * cw * 4));
+      gradN += 2;
+    }
+  }
+  return { skinFrac: n ? skin / n : 0, texture: gradN ? gradSum / gradN : 0 };
+}
+
+/** الإطار مغطى: أغلبه جلد وبلا تفاصيل، أو بلا أي تفاصيل إطلاقاً (قماش/إصبع على العدسة). */
+export function isFrameOccluded({ skinFrac, texture }) {
+  return (skinFrac >= 0.7 && texture < 6) || texture < 1.5;
+}
+
 export class RayEngine {
   constructor(opt = {}) {
     this.camHeight = opt.camHeight ?? 1.32;
@@ -208,18 +241,51 @@ export class RayEngine {
           const cx = (bb.originX + bb.width / 2) / vw;
           const cy = (bb.originY + bb.height / 2) / vh;
           const bottomY = Math.min(1.0, (bb.originY + bb.height) / vh);
+          const boxW = bb.width / vw, boxH = bb.height / vh;
+          const score = cat?.score ?? 0.5;
+          // ثقة ضعيفة: لا نسمّي الشيء (لا نقول «شخص» ونحن غير متأكدين)
+          const uncertain = score < LOW_CONF_SCORE;
+          // صندوق يملأ أغلب الصورة = الشيء ملاصق للكاميرا؛ تقدير المسافة من الأرض هنا كاذب
+          const tooClose = boxW * boxH >= FILL_AREA || (boxH >= 0.9 && boxW >= 0.6);
           return {
-            label: AR_LABELS[rawName] || rawName,
-            score: cat?.score || 0.5,
+            label: uncertain ? 'عائق' : (AR_LABELS[rawName] || rawName),
+            score,
+            uncertain,
+            tooClose,
             cx, cy,
-            boxW: bb.width / vw,
-            boxH: bb.height / vh,
-            dist: this._calcDistFromRow(bottomY, bb.height / vh),
+            boxW,
+            boxH,
+            dist: tooClose ? VERY_CLOSE_M : this._calcDistFromRow(bottomY, boxH),
           };
         });
       } catch (_) {
         // نحافظ على آخر نتائج صالحة دون تعطيل الرادار
       }
+    }
+
+    // الكاميرا مغطاة (كف/إصبع/شيء ملاصق): لا نعطي رقماً كاذباً، نقول «قريب جداً»
+    if (zInfo.occluded || this.lastDetections.some((d) => d.tooClose)) {
+      const z = { left: VERY_CLOSE_M, center: VERY_CLOSE_M, right: VERY_CLOSE_M };
+      this.zones = { ...z };
+      this.lastDist = VERY_CLOSE_M;
+      this.lastActiveZone = 'center';
+      const outOcc = {
+        dist: VERY_CLOSE_M,
+        label: 'شيء ملاصق للكاميرا',
+        dir: 'center',
+        dirAr: 'أمامك',
+        guidance: 'شيء قريب جداً من الكاميرا أو العدسة مغطاة، المسافة غير مؤكدة',
+        isWall: false,
+        conf: 0,
+        hitX: 0.5,
+        hitY: 0.5,
+        zones: z,
+        dark: false,
+        occluded: true,
+        light: zInfo.light,
+      };
+      this.target = outOcc;
+      return outOcc;
     }
 
     const alpha = 0.35;
@@ -307,6 +373,7 @@ export class RayEngine {
       hitY,
       zones: { ...this.zones },
       dark: false,
+      occluded: false,
       light: zInfo.light,
     };
     this.target = out;
@@ -360,6 +427,8 @@ export class RayEngine {
       };
     }
 
+    const occluded = isFrameOccluded(frameCoverageStats(imgData));
+
     const zones = {};
     const hitY = {};
     let bestConf = 0.55;
@@ -409,6 +478,6 @@ export class RayEngine {
       if (maxGrad > 25) bestConf = 0.82;
     }
 
-    return { zones, hitY, conf: bestConf, dark: false, light };
+    return { zones, hitY, conf: bestConf, dark: false, occluded, light };
   }
 }

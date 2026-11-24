@@ -545,7 +545,7 @@
             radarGuide.textContent = 'الكاميرا مغطاة في الظلام: تم تعليق التنبيهات الصوتية مؤقتاً.';
           } else {
             radarTarget.textContent = `${res.label || 'عائق'} (${res.dirAr})`;
-            radarDist.textContent = `${res.dist.toFixed(1)} م`;
+            radarDist.textContent = res.occluded ? 'قريب جداً' : `${res.dist.toFixed(1)} م`;
             radarDist.dataset.level = levelForDist(res.dist);
             radarGuide.textContent = isMuted ? `${res.guidance} · (الصوت مكتوم)` : res.guidance;
             updateZoneBox(zoneLeft, 'يسار', res.zones.left);
