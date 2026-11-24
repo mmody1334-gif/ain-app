@@ -1,0 +1,38 @@
+name: tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests + syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Syntax check (every JS module)
+        run: |
+          fail=0
+          for f in $(git ls-files 'js/*.js' 'js/**/*.js' sw.js sync-worker/src/index.js); do
+            node --input-type=module --check < "$f" || { echo "::error file=$f::syntax error"; fail=1; }
+          done
+          exit $fail
+      - name: Tests (radar, distance, signs, speech, rooms, vision)
+        run: node --test tests/*.test.mjs
+
+  a11y:
+    name: Accessibility (axe, all screens, light + dark)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm i --no-save playwright@1 axe-core@4
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/a11y-check.browser.mjs
