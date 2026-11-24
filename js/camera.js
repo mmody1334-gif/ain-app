@@ -10,15 +10,16 @@ const CDN_BASE = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${CDN_VER
 const MODEL_CDN = 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';
 const POSE_MODEL_CDN = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
+/** true موجود · false غير موجود (404) · null لا نعرف (بلا إنترنت: طلب HEAD لا يمر عبر عامل الخدمة) */
 async function exists(url) {
-  try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; }
+  try { const r = await fetch(url, { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return null; }
 }
 
 export async function loadDetector(onStatus = () => {}, pref = 'cpu') {
   const mock = typeof window !== 'undefined' && window.__SB_MOCK__;
   if (mock) return { mock: true, backend: 'mock', detect: (video, t) => mock.detect(t), detectPose: () => (mock.detectPose ? mock.detectPose() : null) };
   let mod, wasmBase, modelUrl;
-  const localOk = await exists('vendor/tasks-vision/vision_bundle.mjs');
+  const localOk = (await exists('vendor/tasks-vision/vision_bundle.mjs')) === true;
   if (localOk) {
     onStatus('تحميل المحرّك من الجهاز…');
     mod = await import(new URL('vendor/tasks-vision/vision_bundle.mjs', document.baseURI).href);
@@ -28,8 +29,9 @@ export async function loadDetector(onStatus = () => {}, pref = 'cpu') {
     mod = await import(`${CDN_BASE}/vision_bundle.mjs`);
     wasmBase = `${CDN_BASE}/wasm`;
   }
-  modelUrl = (await exists('vendor/hand_landmarker.task')) ? new URL('vendor/hand_landmarker.task', document.baseURI).href : MODEL_CDN;
-  const poseUrl = (await exists('vendor/pose_landmarker_lite.task')) ? new URL('vendor/pose_landmarker_lite.task', document.baseURI).href : POSE_MODEL_CDN;
+  // بلا إنترنت نستخدم النسخة المحلية المخزّنة (كان يتحول لرابط CDN غير مخزّن فيفشل)
+  modelUrl = (await exists('vendor/hand_landmarker.task')) !== false ? new URL('vendor/hand_landmarker.task', document.baseURI).href : MODEL_CDN;
+  const poseUrl = (await exists('vendor/pose_landmarker_lite.task')) !== false ? new URL('vendor/pose_landmarker_lite.task', document.baseURI).href : POSE_MODEL_CDN;
   const { FilesetResolver, HandLandmarker, PoseLandmarker } = mod;
   const fileset = await FilesetResolver.forVisionTasks(wasmBase);
   const make = (delegate) => HandLandmarker.createFromOptions(fileset, {
@@ -186,7 +188,11 @@ export class CameraHub {
       const now = performance.now();
       const t = (now - this.t0) / 1000;
       let hands = null;
-      if (this.detector.mock) {
+      if (this.skipHands && !this.detector.mock) {
+        // شاشة الرادار: لا كشف يد ولا وضعية (توفير بطارية)؛ المستمعون يأخذون الفيديو مباشرة
+        if (now - this._lastDetect < 30) { requestAnimationFrame(step); return; }
+        this._lastDetect = now;
+      } else if (this.detector.mock) {
         try { hands = this.detector.detect(null, t); } catch (e) { hands = null; }
       } else {
         const fresh = this.video.readyState >= 2 && !this._switching &&
@@ -200,7 +206,7 @@ export class CameraHub {
       }
       this.lastLm = hands;
       let pose = this.lastPose;
-      if (this.detector.detectPose && (this.detector.mock || this.diag.frames % 4 === 0)) {
+      if (!this.skipHands && this.detector.detectPose && (this.detector.mock || this.diag.frames % 4 === 0)) {
         try { const p = this.detector.detectPose(this.video, t); if (p) { pose = p; this.lastPose = p; this.diag.pose++; } } catch (e) { /* لا شيء */ }
       }
       const out = this.engine.process(t, hands, this.aspect, pose);

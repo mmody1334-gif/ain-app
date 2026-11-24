@@ -24,7 +24,8 @@ export function buildRadarWarningText(target, band) {
   if (!target || band.id === 'clear') {
     return 'المسار أمامك سالك';
   }
-  const cleanLabel = String(target.label || 'عائق').replace(/\s+(يسار|يمين)$/, '');
+  let cleanLabel = String(target.label || 'عائق').replace(/\s+(يسار|يمين)$/, '');
+  if (cleanLabel === 'مسار سالك') cleanLabel = 'عائق';
   const dirAr = target.dirAr || (target.dir === 'left' ? 'على يسارك' : target.dir === 'right' ? 'على يمينك' : 'أمامك');
   if (band.id === 'danger') {
     const z = target.zones || {};

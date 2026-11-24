@@ -3,7 +3,11 @@
 // يدعم الاقتران اللاسلكي بالنظارة الذكية عبر Web Bluetooth (BLE).
 
 import { h, btn, icon, toast } from '../ui.js';
-import { RayEngine, formatDistanceAr } from '../depth.js';
+import { RayEngine } from '../depth.js';
+import { RadarSpeechGate } from '../vision/radar.js';
+
+// ربط النظارة متوقف مؤقتاً بقرار صاحب المشروع حتى يكتمل العتاد. لإعادته: true
+export const BLE_HARDWARE_ENABLED = false;
 
 export function createRayView(app) {
   let root, slot, hudTargetEl, hudDistEl, speakBtn, torchBtn, flipBtn, bleBtn;
@@ -13,12 +17,12 @@ export function createRayView(app) {
   let audioCtx = null;
   let pannerNode = null;
   let sonarTimer = null;
-  let lastSpokenText = '';
-  let lastSpokenTime = 0;
+  // بوابة النطق: مرة واحدة، فاصل 8 ثوانٍ، وإعادة فقط عند تغيّر المسافة أو الاتجاه؛ وتسكت في الجيب/الظلام
+  const gate = new RadarSpeechGate({ speakFn: (text, o) => app.say(text, o) });
   let isTorchOn = false;
   let enableSonar = true;
   let enableVib = true;
-  let currentTarget = { dist: 2.5, label: 'مسار سالك', hitX: 0.5, hitY: 0.5 };
+  let currentTarget = { dist: 4.5, label: 'مسار سالك', hitX: 0.5, hitY: 0.5 };
   let bleDevice = null;
   let bleChar = null;
 
@@ -86,7 +90,8 @@ export function createRayView(app) {
     if (!app.cam.running && !bleChar) return;
 
     const d = currentTarget.dist || 2.5;
-    playSonarPing(d, currentTarget.hitX);
+    // في الجيب/الظلام لا نبضات: كانت تصفّر بلا توقف والهاتف في الجيب
+    if (!gate.isPocketMode && !currentTarget.dark) playSonarPing(d, currentTarget.hitX);
 
     const clamped = Math.max(0.4, Math.min(4.0, d));
     const interval = Math.round(80 + Math.pow((clamped - 0.4) / 3.6, 1.4) * 850);
@@ -94,22 +99,8 @@ export function createRayView(app) {
   }
 
   function announceTarget(force = false) {
-    const now = performance.now();
-    const dStr = formatDistanceAr(currentTarget.dist);
-    const label = currentTarget.label || 'عائق';
-    let text = '';
-
-    if (label === 'مسار سالك' || currentTarget.dist >= 4.0) {
-      text = 'المسار أمامك سالك، أكثر من أربعة أمتار.';
-    } else {
-      text = `${label}، على بعد ${dStr}.`;
-    }
-
-    if (force || (text !== lastSpokenText && now - lastSpokenTime > 2600) || (now - lastSpokenTime > 6500)) {
-      lastSpokenText = text;
-      lastSpokenTime = now;
-      app.say(text);
-    }
+    if (force) return gate.speakNow(currentTarget);
+    return gate.update(currentTarget);
   }
 
   function renderRayOverlay(ctx, w, h, target) {
@@ -196,6 +187,10 @@ export function createRayView(app) {
 
   /** الاقتران بالنظارة الذكية عبر Web Bluetooth */
   async function connectBleGlasses() {
+    if (!BLE_HARDWARE_ENABLED) {
+      toast('ربط النظارة متوقف مؤقتاً، وسيعود قريباً');
+      return;
+    }
     if (!navigator.bluetooth) {
       toast('متصفحك لا يدعم Web Bluetooth (استخدم Chrome على أندرويد أو الحاسوب)');
       return;
@@ -374,6 +369,7 @@ export function createRayView(app) {
         ic: 'share',
         title: 'اتصال بنظارة حذيفة الذكية عبر البلوتوث',
         onclick: connectBleGlasses,
+        hidden: !BLE_HARDWARE_ENABLED,
       });
 
       sonarCb = h('input', {
@@ -445,6 +441,9 @@ export function createRayView(app) {
       app.updateStage();
       engine.start();
       engine.initDetector().catch(() => {});
+      gate.reset();
+      // الرادار لا يحتاج كشف اليد/الوضعية: إيقافهما يوفّر البطارية ويُسرّع الرادار
+      app.cam.skipHands = true;
 
       if (!app.cam.running) {
         try {
@@ -473,8 +472,8 @@ export function createRayView(app) {
         if (!bleChar) {
           const res = engine.process(app.cam.video, t);
           currentTarget = res;
-          hudTargetEl.textContent = res.label || 'عائق';
-          hudDistEl.textContent = `${res.dist.toFixed(1)} م`;
+          hudTargetEl.textContent = gate.isPocketMode ? 'وضع الجيب (الكاميرا مغطاة)' : (res.label || 'عائق');
+          hudDistEl.textContent = gate.isPocketMode ? '— م' : res.occluded ? 'قريب جداً' : `${res.dist.toFixed(1)} م`;
         }
 
         if (currentTarget.dist < 0.9) {
@@ -496,6 +495,8 @@ export function createRayView(app) {
 
     hide() {
       clearTimeout(sonarTimer);
+      app.cam.skipHands = false;
+      gate.cancelFn();
       engine.stop();
       if (offFrame) { offFrame(); offFrame = null; }
       if (app.cam.octx && app.cam.overlay) {

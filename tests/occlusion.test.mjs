@@ -119,3 +119,9 @@ test('no false alarm: a textured wood/beige floor (skin-like color) is NOT treat
   const ray = engineWith(() => ({ width: CW, height: CH, data }), []);
   assert.equal(ray.process(video).occluded, false);
 });
+
+test('objects without an Arabic name (e.g. "kite") are announced as "عائق", never in English', () => {
+  const ray = engineWith(() => sceneFrame(), [det(260, 180, 120, 200, 'kite', 0.8)]);
+  ray.process(video);
+  assert.equal(ray.lastDetections[0].label, 'عائق');
+});

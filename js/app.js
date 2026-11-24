@@ -546,6 +546,13 @@ class App {
     const quality = st.querySelector('[data-hud="quality"]');
     const hold = out.hold;
     bar.style.width = hold ? Math.round(hold.progress * 100) + '%' : '0';
+    // شاشة الرادار: لا علاقة لها باليد، فلا نعرض «ضع يدك / لا أرى يدك»
+    if (this.cam.skipHands) {
+      left.textContent = 'الرادار يعمل';
+      if (word) word.textContent = '';
+      if (quality) { quality.textContent = ''; quality.className = ''; }
+      return;
+    }
     if (!out.hand) { left.textContent = this.cam.diag.errors > 0 ? 'تعذّر كشف اليد: افتح الإعدادات ← التشخيص' : 'ضع يدك أمام الكاميرا'; }
     else if (out.moving) left.textContent = 'حركة…';
     else if (hold) left.textContent = hold.sign ? hold.sign.word : (this.builtinName(hold.id) || 'شكل');

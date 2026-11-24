@@ -84,6 +84,14 @@ export function formatDistanceAr(d) {
 }
 
 export const VERY_CLOSE_M = 0.3;
+export const CLEAR_M = 4.5;
+
+/** أطوال تقريبية (م) لأشياء تقف على الأرض: لتقدير المسافة من الحجم حين تكون قاعدتها خارج الصورة */
+const TYPICAL_HEIGHT_M = {
+  person: 1.65, chair: 0.9, couch: 0.85, bed: 0.6, 'dining table': 0.75, table: 0.75, toilet: 0.75,
+  refrigerator: 1.7, car: 1.5, bus: 3.0, truck: 3.0, bicycle: 1.0, motorcycle: 1.1, bench: 0.85,
+  dog: 0.5, cat: 0.3, 'potted plant': 0.6, suitcase: 0.65, door: 2.0, 'fire hydrant': 0.7,
+};
 const LOW_CONF_SCORE = 0.5;
 const FILL_AREA = 0.55;
 
@@ -134,8 +142,9 @@ export class RayEngine {
       this.ctx = null;
     }
 
-    this.zones = { left: 3.5, center: 3.5, right: 3.5 };
-    this.lastDist = 2.5;
+    // البداية «سالك»: لا نخترع عائقاً قبل أن نرى شيئاً (كان يبدأ بـ 2.5م فينطق تحذيراً وهمياً عند التشغيل)
+    this.zones = { left: CLEAR_M, center: CLEAR_M, right: CLEAR_M };
+    this.lastDist = CLEAR_M;
     this.lastActiveZone = 'center';
     this.target = null;
     this._onOrientation = this._handleOrientation.bind(this);
@@ -161,7 +170,8 @@ export class RayEngine {
   _handleOrientation(e) {
     if (e.beta == null) return;
     this.hasGyro = true;
-    const deg = 85 - e.beta;
+    // الهاتف عمودي تماماً (beta=90) = الكاميرا موجّهة للأفق (ميل 0)
+    const deg = 90 - e.beta;
     this.pitch = Math.max(-0.4, Math.min(0.75, deg * (Math.PI / 180)));
     this.roll = (e.gamma || 0) * (Math.PI / 180);
     this.heading = (e.alpha || 0) * (Math.PI / 180);
@@ -248,14 +258,15 @@ export class RayEngine {
           // صندوق يملأ أغلب الصورة = الشيء ملاصق للكاميرا؛ تقدير المسافة من الأرض هنا كاذب
           const tooClose = boxW * boxH >= FILL_AREA || (boxH >= 0.9 && boxW >= 0.6);
           return {
-            label: uncertain ? 'عائق' : (AR_LABELS[rawName] || rawName),
+            // اسم بلا ترجمة عربية (مثل kite) لا يُنطق بالإنجليزية للكفيف: نقول «عائق»
+            label: uncertain ? 'عائق' : (AR_LABELS[rawName] || 'عائق'),
             score,
             uncertain,
             tooClose,
             cx, cy,
             boxW,
             boxH,
-            dist: tooClose ? VERY_CLOSE_M : this._calcDistFromRow(bottomY, boxH),
+            dist: tooClose ? VERY_CLOSE_M : this._estimateObjectDist(rawName, bottomY, boxH),
           };
         });
       } catch (_) {
@@ -324,7 +335,7 @@ export class RayEngine {
     this.lastActiveZone = activeZone;
 
     let dist = center;
-    let label = centerObj ? centerObj.label : (center <= 3.6 ? 'جدار أو حاجز' : 'مسار سالك');
+    let label = centerObj ? centerObj.label : (center <= 3.6 ? 'عائق' : 'مسار سالك');
     let hitX = centerObj ? centerObj.cx : 0.5;
     let hitY = centerObj ? centerObj.cy : zInfo.hitY.center;
     let conf = centerObj ? centerObj.score : zInfo.conf;
@@ -356,7 +367,10 @@ export class RayEngine {
     } else if (right < 1.15) {
       guidance = `انتبه، ${rightObj ? rightObj.label : 'عائق'} على يمينك (${formatDistanceAr(right)})`;
     } else if (left > 3.6 && center > 3.6 && right > 3.6) {
-      guidance = 'المسار أمامك سالك';
+      // الهاتف عمودي: أقرب أرض تراها الكاميرا على ~2.2م؛ الإمالة للأسفل تكشف القريب
+      guidance = this.hasGyro && this.pitch < 0.2
+        ? 'المسار أمامك سالك · أمِل الهاتف للأسفل قليلاً لرصد العوائق القريبة'
+        : 'المسار أمامك سالك';
     } else {
       guidance = `المسار مفتوح، أقرب حاجز ${dirAr} على بعد ${formatDistanceAr(dist)}`;
     }
@@ -378,6 +392,27 @@ export class RayEngine {
     };
     this.target = out;
     return out;
+  }
+
+  /**
+   * مسافة شيء مكتشف:
+   * - قاعدته ظاهرة: من موضع القاعدة على الأرض (الأدق).
+   * - قاعدته مقطوعة بأسفل الصورة: الشيء أقرب من أقرب أرض تراها الكاميرا، فنقدّر من حجمه المعروف
+   *   ولا نتجاوز مسافة أسفل الصورة (كان يقول 2.7م لشخص على متر).
+   * - للأمان نأخذ الأقرب بين التقديرين حين يتوفر الاثنان.
+   */
+  _estimateObjectDist(rawName, bottomY, boxH) {
+    const ground = this._calcDistFromRow(bottomY, boxH);
+    const H = TYPICAL_HEIGHT_M[rawName];
+    const size = H && boxH > 0.04 ? H / (boxH * 2 * Math.tan(this.vfov / 2)) : null;
+    const clipped = bottomY >= 0.97;
+    if (clipped) {
+      const floorEdge = this._calcDistFromRow(1.0);
+      const est = size != null ? Math.min(size, floorEdge) : floorEdge;
+      return Math.min(4.8, Math.max(VERY_CLOSE_M, est));
+    }
+    const est = size != null ? Math.min(ground, size * 1.25) : ground;
+    return Math.min(4.8, Math.max(VERY_CLOSE_M, est));
   }
 
   _calcDistFromRow(rowNorm, bboxHeightNorm = 0) {
@@ -473,7 +508,8 @@ export class RayEngine {
         baseRow = nearPeakRow;
       }
       const rowNorm = baseRow / ch;
-      zones[k] = this._calcDistFromRow(rowNorm);
+      // لا حافة إطلاقاً = لا دليل على عائق: مسار سالك (كان يُرجع 3.6م «جدار» وهمي)
+      zones[k] = maxGrad === 0 ? CLEAR_M : this._calcDistFromRow(rowNorm);
       hitY[k] = rowNorm;
       if (maxGrad > 25) bestConf = 0.82;
     }
