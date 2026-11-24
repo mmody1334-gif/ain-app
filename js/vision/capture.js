@@ -72,6 +72,7 @@ export class VisionCapture {
     this.facing = opt.facing || 'user';
     this.fit = opt.fit || 'contain'; // 'contain' يمنع قصّ اليدين على أطراف شاشة الهاتف الطولية
     this.preferredBackend = opt.backend || 'GPU';
+    this.scanMode = opt.scanMode || 'hands'; // 'hands' | 'radar'
     this.onFrame = opt.onFrame || (() => {});
     this.onStatus = opt.onStatus || (() => {});
     this.transformHands = opt.transformHands || null; // للخطوة 2: One Euro
@@ -104,7 +105,20 @@ export class VisionCapture {
   setMirror(mirrored) {
     const tf = mirrored ? 'scaleX(-1)' : 'none';
     this.video.style.transform = tf;
-    this.overlay.style.transform = tf;
+    this.overlay.style.transform = this.scanMode === 'radar' ? 'none' : tf;
+  }
+
+  async setScanMode(mode) {
+    const next = mode === 'radar' ? 'radar' : 'hands';
+    if (this.scanMode === next) return;
+    this.scanMode = next;
+    if (next === 'hands' && this.running && !this.landmarker) {
+      await this.initDetector();
+    }
+    this.setMirror(this.facing === 'user');
+    if (this.ctx && this.overlay) {
+      this.ctx.clearRect(0, 0, this.overlay.width, this.overlay.height);
+    }
   }
 
   async initDetector() {
@@ -158,7 +172,9 @@ export class VisionCapture {
   async start(facing = this.facing) {
     if (this.running) return true;
     this.facing = facing;
-    await this.initDetector();
+    if (this.scanMode === 'hands') {
+      await this.initDetector();
+    }
     this.onStatus('تشغيل الكاميرا…');
 
     const constraints = {
@@ -193,7 +209,7 @@ export class VisionCapture {
     this._everSawHandOnGpu = false;
     this._emptyGpuFrames = 0;
     this._slowGpuFrames = 0;
-    this.onStatus(`يعمل (${this.backend})`);
+    this.onStatus(`يعمل (${this.scanMode === 'radar' ? 'رادار' : this.backend})`);
     this._loop();
     return true;
   }
@@ -243,6 +259,40 @@ export class VisionCapture {
 
       this._frameReady = false;
       this._lastDetect = now;
+      const tSec = now / 1000;
+
+      if (this.scanMode === 'radar') {
+        this._frames++;
+        if (now - this._fpsT >= 1000) {
+          this.fps = Math.round((this._frames * 1000) / (now - this._fpsT));
+          this._frames = 0;
+          this._fpsT = now;
+        }
+        const cv = this.overlay;
+        const w = cv.clientWidth || 320;
+        const h = cv.clientHeight || 240;
+        const dpr = Math.min(2, window.devicePixelRatio || 1);
+        if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+          cv.width = Math.round(w * dpr);
+          cv.height = Math.round(h * dpr);
+        }
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.onFrame({
+          t: tSec,
+          nowMs: now,
+          hands: [],
+          fps: this.fps,
+          detectMs: 0,
+          backend: 'RADAR',
+          aspect: this.aspect,
+          mirrored: this.facing === 'user',
+          scanMode: 'radar',
+          cssW: w,
+          cssH: h,
+        });
+        requestAnimationFrame(step);
+        return;
+      }
 
       let hands = [];
       const ts = Math.max(this._lastTs + 1, Math.round(now));
@@ -285,7 +335,6 @@ export class VisionCapture {
         }
       }
 
-      const tSec = now / 1000;
       if (this.transformHands && hands.length) {
         hands = this.transformHands(hands, tSec);
       }

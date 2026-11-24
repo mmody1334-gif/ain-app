@@ -3,87 +3,427 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>عين — معاينة المحرك الجديد (الخطوة 4)</title>
+  <title>عين: معاينة الإشارات والرادار الصوتي</title>
   <style>
-    :root { --bg:#101019; --surface:#1a1a29; --surface2:#232336; --ink:#ecebf8; --muted:#9a98b3; --accent:#4640d4; --ok:#3ccb8e; --bad:#ff7b60; }
-    * { box-sizing:border-box; }
-    body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,'Segoe UI',sans-serif; display:flex; flex-direction:column; min-height:100dvh; }
-    header { padding:10px 14px; display:flex; justify-content:space-between; align-items:center; background:var(--surface); gap:8px; }
-    header h1 { margin:0; font-size:1rem; }
-    .pill { background:var(--surface2); padding:4px 10px; border-radius:99px; font-size:.8rem; font-family:monospace; direction:ltr; }
-    .stage { position:relative; flex:1; min-height:300px; background:#000; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-    video, canvas { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
-    .result-banner { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:rgba(20,20,36,.88); border:2px solid var(--ok); padding:8px 20px; border-radius:16px; text-align:center; min-width:190px; pointer-events:none; }
-    .result-word { font-size:1.7rem; font-weight:800; color:#fff; }
-    .result-conf { font-size:.82rem; color:var(--ok); font-family:monospace; direction:ltr; }
-    .no-hand-banner { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); background:rgba(20,20,36,.88); border:1px solid #f0b429; color:#ffe6a7; padding:8px 16px; border-radius:14px; text-align:center; font-size:.95rem; font-weight:600; max-width:90%; pointer-events:none; }
-    .countdown { position:absolute; font-size:5rem; font-weight:900; color:#fff; text-shadow:0 4px 20px rgba(0,0,0,.8); pointer-events:none; }
-    .train-panel { background:var(--surface); border-top:1px solid #2d2d44; padding:12px 14px; display:flex; flex-direction:column; gap:10px; }
-    .row { display:flex; gap:8px; align-items:center; }
-    input[type="text"] { flex:1; min-height:42px; border-radius:10px; border:1px solid #353552; background:var(--surface2); color:var(--ink); padding:0 12px; font-size:1rem; }
-    .seg { display:flex; gap:6px; }
-    .seg button { flex:1; min-height:38px; font-size:.9rem; background:var(--surface2); color:var(--ink); border:1px solid #353552; }
-    .seg button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
-    .meter { height:10px; background:var(--surface2); border-radius:99px; overflow:hidden; }
-    .meter > i { display:block; height:100%; width:0%; background:var(--ok); transition:width 60ms linear; }
-    .hint { font-size:.9rem; color:var(--muted); margin:0; }
-    footer { padding:10px 14px; display:flex; gap:8px; background:var(--surface); border-top:1px solid #2d2d44; }
-    button { flex:1; min-height:44px; border:0; border-radius:10px; font-size:.95rem; font-weight:700; cursor:pointer; }
-    .primary { background:var(--accent); color:#fff; }
-    .ok { background:var(--ok); color:#0c1f17; }
-    .ghost { background:var(--surface2); color:var(--ink); }
+    :root {
+      --bg: #101019;
+      --surface: #1a1a29;
+      --surface2: #232336;
+      --line: #32324d;
+      --ink: #ecebf8;
+      --muted: #9a98b3;
+      --accent: #4640d4;
+      --focus: #8d89ff;
+      --ok: #3ccb8e;
+      --ok-ink: #0c1f17;
+      --warn: #f0b429;
+      --warn-ink: #241900;
+      --bad: #ff7b60;
+      --bad-ink: #231012;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, 'Segoe UI', Tahoma, sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100dvh;
+      overflow-x: hidden;
+    }
+    a[href], button, input[type="checkbox"], label[for] { cursor: pointer; }
+    :disabled, [disabled] { cursor: not-allowed; opacity: .55; }
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+    header {
+      padding: 10px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      gap: 8px;
+    }
+    .brand-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    header h1 { margin: 0; font-size: clamp(.95rem, 2.5vw, 1.12rem); white-space: nowrap; }
+    .pill {
+      background: var(--surface2);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: .8rem;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      direction: ltr;
+    }
+    .mute-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 0 14px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface2);
+      color: var(--ink);
+      font-size: .9rem;
+      font-weight: 700;
+      flex: 0 0 auto;
+    }
+    .mute-btn:hover:not(:disabled) { border-color: var(--focus); }
+    .mute-btn[aria-pressed="true"] {
+      background: var(--bad);
+      border-color: var(--bad);
+      color: var(--bad-ink);
+    }
+    .mute-btn svg { width: 18px; height: 18px; flex: none; }
+
+    nav.mode-switch {
+      display: flex;
+      gap: 8px;
+      padding: 8px 14px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    nav.mode-switch button {
+      flex: 1;
+      min-height: 44px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface2);
+      color: var(--ink);
+      font-size: .95rem;
+      font-weight: 700;
+    }
+    nav.mode-switch button[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .stage {
+      position: relative;
+      flex: 1;
+      min-height: 260px;
+      aspect-ratio: 4 / 3;
+      max-height: 68dvh;
+      width: 100%;
+      background: #000000;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video, canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .result-banner {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20, 20, 36, .92);
+      border: 2px solid var(--ok);
+      padding: 8px 20px;
+      border-radius: 14px;
+      text-align: center;
+      min-width: 190px;
+      pointer-events: none;
+    }
+    .result-word { font-size: 1.65rem; font-weight: 800; color: #ffffff; }
+    .result-conf { font-size: .82rem; color: var(--ok); font-family: ui-monospace, monospace; direction: ltr; }
+    .no-hand-banner {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20, 20, 36, .92);
+      border: 1px solid var(--warn);
+      color: #ffe6a7;
+      padding: 8px 16px;
+      border-radius: 12px;
+      text-align: center;
+      font-size: .92rem;
+      font-weight: 600;
+      max-width: 92%;
+      pointer-events: none;
+    }
+    .countdown {
+      position: absolute;
+      font-size: 4.5rem;
+      font-weight: 900;
+      color: #ffffff;
+      text-shadow: 0 4px 20px rgba(0, 0, 0, .85);
+      pointer-events: none;
+    }
+
+    .panel {
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .panel[hidden] { display: none !important; }
+    .radar-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .radar-label-caption { font-size: .82rem; color: var(--muted); display: block; }
+    .radar-target { font-size: clamp(1.1rem, 3vw, 1.35rem); font-weight: 800; color: var(--ink); }
+    .radar-dist { font-size: clamp(1.3rem, 3.6vw, 1.65rem); font-weight: 900; color: var(--ok); direction: rtl; }
+    .radar-dist[data-level="warn"] { color: var(--warn); }
+    .radar-dist[data-level="bad"] { color: var(--bad); }
+    .radar-guide {
+      margin: 0;
+      font-size: .94rem;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--surface2);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 12px;
+    }
+    .zones-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .zone-box {
+      background: var(--surface2);
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 6px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .zone-box span { font-size: .8rem; color: var(--muted); }
+    .zone-box strong { font-size: .98rem; color: var(--ink); }
+    .zone-box[data-level="ok"] { border-color: var(--ok); }
+    .zone-box[data-level="warn"] { border-color: var(--warn); }
+    .zone-box[data-level="bad"] { border-color: var(--bad); }
+
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .field-col { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+    .field-col label { font-size: .86rem; font-weight: 700; color: var(--ink); }
+    input[type="text"] {
+      width: 100%;
+      min-height: 44px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: var(--surface2);
+      color: var(--ink);
+      padding: 0 12px;
+      font-size: 1rem;
+    }
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+    .seg button {
+      flex: 1 1 90px;
+      min-height: 44px;
+      font-size: .9rem;
+      background: var(--surface2);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-weight: 700;
+    }
+    .seg button[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .meter { height: 10px; background: var(--surface2); border-radius: 99px; overflow: hidden; }
+    .meter > i { display: block; height: 100%; width: 0%; background: var(--ok); transition: width 60ms linear; }
+    .hint { font-size: .9rem; color: var(--muted); margin: 0; }
+
+    footer {
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: var(--surface);
+      border-top: 1px solid var(--line);
+    }
+    button.act {
+      flex: 1 1 120px;
+      min-height: 44px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      font-size: .93rem;
+      font-weight: 700;
+      padding: 0 12px;
+    }
+    button.act:hover:not(:disabled), nav.mode-switch button:hover:not(:disabled), .seg button:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+    button.act:active:not(:disabled), .mute-btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    .primary { background: var(--accent); color: #ffffff; }
+    .ok { background: var(--ok); color: var(--ok-ink); }
+    .ghost { background: var(--surface2); color: var(--ink); border-color: var(--line); }
+    .ghost[aria-pressed="true"] { border-color: var(--ok); color: var(--ok); }
+
+    @media (min-width: 760px) {
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(300px, 1fr);
+        align-items: stretch;
+      }
+      main.single-col {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .stage { max-height: none; min-height: 380px; }
+      .panel { border-top: 0; border-inline-start: 1px solid var(--line); justify-content: center; }
+    }
+    @media (max-width: 480px) {
+      header, nav.mode-switch, .panel, footer { padding-inline: 10px; }
+      button.act { flex: 1 1 calc(50% - 6px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>عين — الخطوة 4 (سجّل إشارتك)</h1>
-    <span class="pill" id="stats">جاهز</span>
+    <div class="brand-row">
+      <h1>عين · المعاينة الحية</h1>
+      <span class="pill" id="stats">جاهز</span>
+    </div>
+    <button type="button" class="mute-btn" id="muteBtn" aria-pressed="false">
+      <svg id="muteIconOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+      </svg>
+      <svg id="muteIconOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden>
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <line x1="23" y1="9" x2="17" y2="15"></line>
+        <line x1="17" y1="9" x2="23" y2="15"></line>
+      </svg>
+      <span id="muteLabel">كتم الصوت</span>
+    </button>
   </header>
-  <div class="stage">
-    <video id="vid" playsinline muted></video>
-    <canvas id="ov"></canvas>
-    <div class="countdown" id="cdEl" hidden></div>
-    <div class="result-banner" id="banner" hidden>
-      <div class="result-word" id="wordEl">—</div>
-      <div class="result-conf" id="confEl"></div>
+
+  <nav class="mode-switch" aria-label="وضع المعاينة">
+    <button type="button" id="tabSigns" data-app-mode="signs" aria-pressed="true">التعرّف على الإشارات</button>
+    <button type="button" id="tabRadar" data-app-mode="radar" aria-pressed="false">الرادار الصوتي للكفيف</button>
+  </nav>
+
+  <main id="mainWrap" class="single-col">
+    <div class="stage">
+      <video id="vid" width="640" height="480" playsinline muted></video>
+      <canvas id="ov"></canvas>
+      <div class="countdown" id="cdEl" hidden></div>
+      <div class="result-banner" id="banner" hidden>
+        <div class="result-word" id="wordEl">...</div>
+        <div class="result-conf" id="confEl"></div>
+      </div>
+      <div class="no-hand-banner" id="noHandEl" hidden>لم يُعثر على يد: أظهر يدك بوضوح أمام الكاميرا في إضاءة جيدة</div>
     </div>
-    <div class="no-hand-banner" id="noHandEl" hidden>لم يتم العثور على يد — أظهر يدك بوضوح أمام الكاميرا في إضاءة جيدة</div>
-  </div>
-  <section class="train-panel" id="trainPanel" hidden>
-    <div class="row">
-      <input type="text" id="signWord" placeholder="اكتب اسم الإشارة (مثلاً: ماء، مرحبا…)" />
-    </div>
-    <div class="seg" id="modeSeg">
-      <button type="button" data-mode="one" aria-pressed="true">يد واحدة</button>
-      <button type="button" data-mode="two" aria-pressed="false">يدين معاً</button>
-      <button type="button" data-mode="motion" aria-pressed="false">حركة</button>
-    </div>
-    <div class="meter"><i id="progBar"></i></div>
-    <p class="hint" id="trainHint">اكتب الاسم واختر النوع ثم اضغط «ابدأ التسجيل».</p>
-    <div class="row">
-      <button class="primary" id="recStartBtn">ابدأ التسجيل</button>
-      <button class="ok" id="saveSignBtn" hidden>حفظ في الجهاز ✓</button>
-      <button class="ghost" id="closeTrainBtn">إغلاق</button>
-    </div>
-  </section>
+
+    <section class="panel" id="radarPanel" aria-label="لوحة الرادار الصوتي" hidden>
+      <div class="radar-summary">
+        <div>
+          <span class="radar-label-caption">العائق والاتجاه</span>
+          <div class="radar-target" id="radarTarget">في انتظار تشغيل الكاميرا</div>
+        </div>
+        <div>
+          <span class="radar-label-caption">المسافة التقديرية</span>
+          <div class="radar-dist" id="radarDist" data-level="ok">-- م</div>
+        </div>
+      </div>
+      <p class="radar-guide" id="radarGuide" aria-live="polite">شغّل الكاميرا ليبدأ مسح العوائق ثلاثي المناطق والتنبيه الصوتي.</p>
+      <div class="zones-grid" role="group" aria-label="قراءات المناطق الثلاث">
+        <div class="zone-box" id="zoneRight" data-level="ok"><span>يمين</span><strong>-- م</strong></div>
+        <div class="zone-box" id="zoneCenter" data-level="ok"><span>أمامك</span><strong>-- م</strong></div>
+        <div class="zone-box" id="zoneLeft" data-level="ok"><span>يسار</span><strong>-- م</strong></div>
+      </div>
+      <div class="row">
+        <button type="button" class="act primary" id="radarSpeakBtn">انطق المسافة الآن</button>
+      </div>
+      <div class="row">
+        <button type="button" class="act ghost" id="sonarBtn" aria-pressed="true">نبضات السونار: مفعّلة</button>
+        <button type="button" class="act ghost" id="torchBtn" aria-pressed="false">الكشاف</button>
+      </div>
+    </section>
+
+    <section class="panel" id="trainPanel" aria-label="تسجيل إشارة جديدة" hidden>
+      <div class="field-col">
+        <label for="signWord">اسم الإشارة الجديدة</label>
+        <input type="text" id="signWord" placeholder="مثال: ماء، مرحبا" />
+      </div>
+      <div class="seg" id="modeSeg" role="group" aria-label="نوع الإشارة">
+        <button type="button" data-mode="one" aria-pressed="true">يد واحدة</button>
+        <button type="button" data-mode="two" aria-pressed="false">يدان معاً</button>
+        <button type="button" data-mode="motion" aria-pressed="false">حركة</button>
+      </div>
+      <div class="meter"><i id="progBar"></i></div>
+      <p class="hint" id="trainHint">اكتب الاسم واختر النوع ثم اضغط «ابدأ التسجيل».</p>
+      <div class="row">
+        <button type="button" class="act primary" id="recStartBtn">ابدأ التسجيل</button>
+        <button type="button" class="act ok" id="saveSignBtn" hidden>حفظ في الجهاز</button>
+        <button type="button" class="act ghost" id="closeTrainBtn">إغلاق</button>
+      </div>
+    </section>
+  </main>
+
   <footer>
-    <button class="primary" id="startBtn">تشغيل الكاميرا</button>
-    <button class="ok" id="openTrainBtn">سجّل إشارتك</button>
-    <button class="ghost" id="flipBtn">قلب</button>
-    <button class="ghost" id="modeBtn">GPU</button>
+    <button type="button" class="act primary" id="startBtn">تشغيل الكاميرا</button>
+    <button type="button" class="act ok" id="openTrainBtn">سجّل إشارتك</button>
+    <button type="button" class="act ghost" id="flipBtn">قلب الكاميرا</button>
+    <button type="button" class="act ghost" id="modeBtn">GPU</button>
   </footer>
+
   <script type="module">
     import { VisionCapture } from './js/vision/capture.js';
     import { VisionSmoother } from './js/vision/smooth.js';
     import { StaticClassifier, extractFeatures, fingerStates3 } from './js/vision/classify.js';
     import { SignTrainer } from './js/vision/train.js';
+    import { RadarSpeechGate, SonarAudio, renderRadarOverlay } from './js/vision/radar.js';
+    import { RayEngine, formatDistanceAr } from './js/depth.js';
+    import { tts } from './js/speech.js';
+    import { sfx } from './js/sfx.js';
     import { Store } from './js/store.js';
 
+    const mainWrap = document.getElementById('mainWrap');
     const stats = document.getElementById('stats');
+    const muteBtn = document.getElementById('muteBtn');
+    const muteLabel = document.getElementById('muteLabel');
+    const muteIconOn = document.getElementById('muteIconOn');
+    const muteIconOff = document.getElementById('muteIconOff');
+    const tabSigns = document.getElementById('tabSigns');
+    const tabRadar = document.getElementById('tabRadar');
+
     const startBtn = document.getElementById('startBtn');
     const flipBtn = document.getElementById('flipBtn');
     const modeBtn = document.getElementById('modeBtn');
     const openTrainBtn = document.getElementById('openTrainBtn');
+
     const trainPanel = document.getElementById('trainPanel');
     const signWord = document.getElementById('signWord');
     const modeSeg = document.getElementById('modeSeg');
@@ -98,20 +438,71 @@
     const confEl = document.getElementById('confEl');
     const noHandEl = document.getElementById('noHandEl');
 
+    const radarPanel = document.getElementById('radarPanel');
+    const radarTarget = document.getElementById('radarTarget');
+    const radarDist = document.getElementById('radarDist');
+    const radarGuide = document.getElementById('radarGuide');
+    const zoneLeft = document.getElementById('zoneLeft');
+    const zoneCenter = document.getElementById('zoneCenter');
+    const zoneRight = document.getElementById('zoneRight');
+    const radarSpeakBtn = document.getElementById('radarSpeakBtn');
+    const sonarBtn = document.getElementById('sonarBtn');
+    const torchBtn = document.getElementById('torchBtn');
+
     const smoother = new VisionSmoother(1.2, 8.0);
     const clf = new StaticClassifier({ k: 5, voteWindow: 5, confThreshold: 0.7 });
     const trainer = new SignTrainer();
     const store = new Store();
+    const rayEngine = new RayEngine();
+    const radarGate = new RadarSpeechGate();
+    const sonar = new SonarAudio();
 
+    let appMode = 'signs'; // 'signs' | 'radar'
+    let isMuted = false;
+    let isTorchOn = false;
     let starterSigns = [];
     let userSigns = [];
     let recMode = 'one';
-    let draftSign = null; // شاشة «جرّب الآن» قبل/بعد الحفظ
+    let draftSign = null;
+    let lastSignWord = '';
+    let lastSignSpokenAt = -Infinity;
+    let latestRadarTarget = null;
+
+    function syncMainGrid() {
+      const hasOpenSidePanel = !radarPanel.hidden || !trainPanel.hidden;
+      mainWrap.classList.toggle('single-col', !hasOpenSidePanel);
+    }
+
+    function levelForDist(d) {
+      if (d < 0.95) return 'bad';
+      if (d < 2.0) return 'warn';
+      return 'ok';
+    }
+
+    function updateZoneBox(el, name, d) {
+      el.querySelector('strong').textContent = `${d.toFixed(1)} م`;
+      el.dataset.level = levelForDist(d);
+      el.setAttribute('aria-label', `${name}: ${formatDistanceAr(d)}`);
+    }
 
     function reloadClassifier(extra = null) {
       const all = [...starterSigns, ...userSigns, ...(extra ? [extra] : [])];
       clf.loadSigns(all);
     }
+
+    function setMuted(nextMuted) {
+      isMuted = !!nextMuted;
+      radarGate.setMuted(isMuted);
+      sonar.setMuted(isMuted);
+      sfx.setMuted(isMuted);
+      if (isMuted) tts.cancel();
+      muteBtn.setAttribute('aria-pressed', String(isMuted));
+      muteLabel.textContent = isMuted ? 'إلغاء الكتم' : 'كتم الصوت';
+      muteIconOn.hidden = isMuted;
+      muteIconOff.hidden = !isMuted;
+    }
+
+    muteBtn.onclick = () => setMuted(!isMuted);
 
     (async () => {
       await store.open();
@@ -137,6 +528,36 @@
       transformHands: (hands, t) => smoother.smooth(hands, t),
       onStatus: (s) => { stats.textContent = s; },
       onFrame: (f) => {
+        if (appMode === 'radar' || f.scanMode === 'radar') {
+          banner.hidden = true;
+          noHandEl.hidden = true;
+          const res = rayEngine.process(cap.video);
+          latestRadarTarget = res;
+          const gateRes = radarGate.update(res);
+          sonar.setTarget(res, radarGate.isPocketMode);
+
+          stats.textContent = `RADAR · ${f.fps}fps · ${res.dist.toFixed(1)}m`;
+
+          if (radarGate.isPocketMode) {
+            radarTarget.textContent = 'وضع الجيب (الكاميرا مغطاة)';
+            radarDist.textContent = '-- م';
+            radarDist.dataset.level = 'warn';
+            radarGuide.textContent = 'الكاميرا مغطاة في الظلام: تم تعليق التنبيهات الصوتية مؤقتاً.';
+          } else {
+            radarTarget.textContent = `${res.label || 'عائق'} (${res.dirAr})`;
+            radarDist.textContent = `${res.dist.toFixed(1)} م`;
+            radarDist.dataset.level = levelForDist(res.dist);
+            radarGuide.textContent = isMuted ? `${res.guidance} · (الصوت مكتوم)` : res.guidance;
+            updateZoneBox(zoneLeft, 'يسار', res.zones.left);
+            updateZoneBox(zoneCenter, 'أمامك', res.zones.center);
+            updateZoneBox(zoneRight, 'يمين', res.zones.right);
+          }
+
+          renderRadarOverlay(cap.ctx, f.cssW || 320, f.cssH || 240, res, f.mirrored);
+          void gateRes;
+          return;
+        }
+
         const labels = f.hands.map((h) => {
           if (!h.hand) return '?';
           return f.mirrored ? (h.hand === 'Left' ? 'R' : 'L') : (h.hand === 'Left' ? 'L' : 'R');
@@ -155,9 +576,9 @@
             if (draftSign) {
               reloadClassifier(draftSign);
               saveSignBtn.hidden = false;
-              trainHint.textContent = `جرّب الآن! أرِ الكاميرا «${draftSign.word}» لترى الثقة الفورية، ثم اضغط «حفظ في الجهاز».`;
+              trainHint.textContent = `جرّب الآن: أرِ الكاميرا «${draftSign.word}» لترى الثقة الفورية، ثم اضغط «حفظ في الجهاز».`;
             } else {
-              trainHint.textContent = 'عيّنات قليلة جداً — تأكد من ظهور اليد وأعد المحاولة.';
+              trainHint.textContent = 'عيّنات قليلة جداً، تأكد من ظهور اليد وأعد المحاولة.';
             }
           }
           return;
@@ -168,44 +589,193 @@
         if (!f.hands.length) {
           banner.hidden = true;
           noHandEl.hidden = false;
+          lastSignWord = '';
           noHandEl.textContent = (f.backend === 'GPU' && cap.isMobile && !cap._everSawHandOnGpu && !cap._manualBackend)
-            ? 'جاري فحص اليد على GPU… لو لم تظهر سيتم التحويل تلقائياً إلى CPU'
-            : 'لم يتم العثور على يد — أظهر يدك بوضوح أمام الكاميرا في إضاءة جيدة';
+            ? 'جارٍ فحص اليد على GPU، وعند التعذّر سيتم التحويل تلقائياً إلى CPU'
+            : 'لم يُعثر على يد: أظهر يدك بوضوح أمام الكاميرا في إضاءة جيدة';
         } else if (pred.word) {
           noHandEl.hidden = true;
           banner.hidden = false;
           wordEl.textContent = pred.word;
           confEl.textContent = `${Math.round(pred.conf * 100)}% · ${bits}`;
+          const nowMs = performance.now();
+          if (!isMuted && pred.word !== lastSignWord && nowMs - lastSignSpokenAt >= 1200) {
+            lastSignWord = pred.word;
+            lastSignSpokenAt = nowMs;
+            tts.speak(pred.word, { cancel: false });
+          }
         } else {
           noHandEl.hidden = true;
           banner.hidden = false;
           wordEl.textContent = 'غير معروف';
           confEl.textContent = bits;
+          lastSignWord = '';
         }
       },
     });
 
+    async function switchAppMode(nextMode) {
+      appMode = nextMode === 'radar' ? 'radar' : 'signs';
+      tabSigns.setAttribute('aria-pressed', String(appMode === 'signs'));
+      tabRadar.setAttribute('aria-pressed', String(appMode === 'radar'));
+
+      if (appMode === 'radar') {
+        trainPanel.hidden = true;
+        radarPanel.hidden = false;
+        openTrainBtn.hidden = true;
+        modeBtn.hidden = true;
+        banner.hidden = true;
+        noHandEl.hidden = true;
+        syncMainGrid();
+
+        sonar.unlock();
+        radarGate.reset();
+        rayEngine.start();
+        rayEngine.initDetector().catch(() => {});
+        await cap.setScanMode('radar');
+
+        if (cap.running) {
+          if (cap.facing !== 'environment') {
+            try { await cap.flip(); } catch (_) {}
+          }
+          sonar.start();
+        }
+      } else {
+        sonar.stop();
+        rayEngine.stop();
+        if (isTorchOn) {
+          try { await cap.stream?.getVideoTracks?.()?.[0]?.applyConstraints({ advanced: [{ torch: false }] }); } catch (_) {}
+          isTorchOn = false;
+          torchBtn.setAttribute('aria-pressed', 'false');
+        }
+        radarPanel.hidden = true;
+        openTrainBtn.hidden = false;
+        modeBtn.hidden = false;
+        syncMainGrid();
+
+        await cap.setScanMode('hands');
+        if (cap.running && cap.facing !== 'user') {
+          try { await cap.flip(); } catch (_) {}
+        }
+      }
+    }
+
+    tabSigns.onclick = () => switchAppMode('signs');
+    tabRadar.onclick = () => switchAppMode('radar');
+
     startBtn.onclick = async () => {
-      if (cap.running) { cap.stop(); smoother.reset(); clf.reset(); banner.hidden = true; noHandEl.hidden = true; startBtn.textContent = 'تشغيل الكاميرا'; stats.textContent = 'متوقف'; return; }
+      sonar.unlock();
+      if (cap.running) {
+        cap.stop();
+        sonar.stop();
+        smoother.reset();
+        clf.reset();
+        radarGate.reset();
+        banner.hidden = true;
+        noHandEl.hidden = true;
+        startBtn.textContent = 'تشغيل الكاميرا';
+        stats.textContent = 'متوقف';
+        if (appMode === 'radar') {
+          radarTarget.textContent = 'متوقف';
+          radarDist.textContent = '-- م';
+          radarGuide.textContent = 'اضغط «تشغيل الكاميرا» لاستئناف المسح.';
+        }
+        return;
+      }
       startBtn.disabled = true;
-      try { await cap.start(); startBtn.textContent = 'إيقاف'; }
-      catch (e) { stats.textContent = 'خطأ: ' + (e.message || e); }
-      finally { startBtn.disabled = false; }
+      try {
+        const desiredFacing = appMode === 'radar' ? 'environment' : 'user';
+        await cap.setScanMode(appMode === 'radar' ? 'radar' : 'hands');
+        await cap.start(desiredFacing);
+        startBtn.textContent = 'إيقاف الكاميرا';
+        if (appMode === 'radar') {
+          radarGate.reset();
+          sonar.start();
+        }
+      } catch (e) {
+        stats.textContent = 'خطأ: ' + (e.message || e);
+        if (appMode === 'radar') {
+          radarGuide.textContent = 'تعذّر الوصول إلى الكاميرا: تحقق من إذن المتصفح ثم أعد المحاولة.';
+        }
+      } finally {
+        startBtn.disabled = false;
+      }
     };
-    flipBtn.onclick = () => { if (cap.running) { smoother.reset(); clf.reset(); cap.flip(); } };
+
+    flipBtn.onclick = async () => {
+      if (!cap.running) return;
+      smoother.reset();
+      clf.reset();
+      radarGate.reset();
+      await cap.flip();
+      if (appMode === 'radar') sonar.start();
+    };
+
     modeBtn.onclick = async () => {
       const next = (cap.backend || cap.preferredBackend) === 'GPU' ? 'CPU' : 'GPU';
       modeBtn.disabled = true;
-      try { smoother.reset(); clf.reset(); await cap.setBackend(next); modeBtn.textContent = cap.backend || next; }
-      finally { modeBtn.disabled = false; }
+      try {
+        smoother.reset();
+        clf.reset();
+        await cap.setBackend(next);
+        modeBtn.textContent = cap.backend || next;
+      } finally {
+        modeBtn.disabled = false;
+      }
+    };
+
+    radarSpeakBtn.onclick = () => {
+      sonar.unlock();
+      if (isMuted) {
+        radarGuide.textContent = 'الصوت مكتوم: اضغط «إلغاء الكتم» أعلى الصفحة لسماع التنبيه.';
+        return;
+      }
+      const target = latestRadarTarget || rayEngine.target || {
+        dist: 3.5, label: 'مسار سالك', dir: 'center', dirAr: 'أمامك', zones: { left: 3.5, center: 3.5, right: 3.5 },
+      };
+      radarGate.speakNow(target);
+    };
+
+    sonarBtn.onclick = () => {
+      sonar.unlock();
+      const next = !sonar.enabled;
+      sonar.setEnabled(next);
+      sonarBtn.setAttribute('aria-pressed', String(next));
+      sonarBtn.textContent = next ? 'نبضات السونار: مفعّلة' : 'نبضات السونار: متوقفة';
+    };
+
+    torchBtn.onclick = async () => {
+      if (!cap.stream) {
+        radarGuide.textContent = 'شغّل الكاميرا أولاً لتفعيل الكشاف.';
+        return;
+      }
+      const track = cap.stream.getVideoTracks?.()?.[0];
+      if (!track) return;
+      try {
+        const caps = track.getCapabilities?.();
+        if (caps && caps.torch) {
+          isTorchOn = !isTorchOn;
+          await track.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+          torchBtn.setAttribute('aria-pressed', String(isTorchOn));
+        } else {
+          radarGuide.textContent = 'كشاف الهاتف غير مدعوم على هذا الجهاز أو المتصفح.';
+        }
+      } catch (_) {
+        radarGuide.textContent = 'تعذّر التحكم في الكشاف.';
+      }
     };
 
     openTrainBtn.onclick = async () => {
       trainPanel.hidden = !trainPanel.hidden;
+      syncMainGrid();
       if (!trainPanel.hidden && !cap.running) {
-        try { await cap.start(); startBtn.textContent = 'إيقاف'; } catch (_) {}
+        try {
+          await cap.start('user');
+          startBtn.textContent = 'إيقاف الكاميرا';
+        } catch (_) {}
       }
     };
+
     closeTrainBtn.onclick = () => {
       trainer.reset();
       draftSign = null;
@@ -213,12 +783,20 @@
       progBar.style.width = '0%';
       reloadClassifier();
       trainPanel.hidden = true;
+      syncMainGrid();
     };
 
     recStartBtn.onclick = async () => {
       const w = signWord.value.trim();
-      if (!w) { signWord.focus(); trainHint.textContent = 'اكتب اسم الإشارة أولاً.'; return; }
-      if (!cap.running) await cap.start();
+      if (!w) {
+        signWord.focus();
+        trainHint.textContent = 'اكتب اسم الإشارة أولاً.';
+        return;
+      }
+      if (!cap.running) {
+        await cap.start('user');
+        startBtn.textContent = 'إيقاف الكاميرا';
+      }
       draftSign = null;
       saveSignBtn.hidden = true;
       recStartBtn.disabled = true;
@@ -226,7 +804,7 @@
       for (const n of [3, 2, 1]) {
         cdEl.hidden = false;
         cdEl.textContent = String(n);
-        trainHint.textContent = `استعد… ${n}`;
+        trainHint.textContent = `استعد: ${n}`;
         await sleep(700);
       }
       cdEl.hidden = true;
@@ -242,7 +820,22 @@
       reloadClassifier();
       saveSignBtn.hidden = true;
       progBar.style.width = '0%';
-      trainHint.textContent = `تم حفظ «${savedWord}» في الجهاز ✓ — جرّبها الآن مباشرة!`;
+      trainHint.textContent = `تم حفظ «${savedWord}» في الجهاز، جرّبها الآن مباشرة.`;
+    };
+
+    if (location.hash === '#radar' || new URLSearchParams(location.search).get('mode') === 'radar') {
+      switchAppMode('radar');
+    }
+
+    window.__ainPreview = {
+      cap,
+      rayEngine,
+      radarGate,
+      sonar,
+      setMuted,
+      switchAppMode,
+      getMuted: () => isMuted,
+      getAppMode: () => appMode,
     };
   </script>
 </body>

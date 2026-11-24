@@ -1,5 +1,5 @@
-// محرك العمق والشعاع (Ain Sonar Ray)
-// يحسب المسافة المترية للجدران والعوائق أمام الكفيف باستخدام كاميرا الهاتف وزاوية الميلان
+// محرك العمق والشعاع ثلاثي المناطق للكفيف (Ain 3-Zone Spatial Radar)
+// يحلل الكاميرا الخلفية للهاتف لتقدير المسافة والاتجاه: يمين · أمامك · يسار.
 
 export const AR_LABELS = {
   person: 'شخص',
@@ -8,43 +8,90 @@ export const AR_LABELS = {
   bed: 'سرير',
   'dining table': 'طاولة',
   table: 'طاولة',
+  toilet: 'دورة مياه',
   tv: 'شاشة',
-  door: 'باب',
   laptop: 'حاسوب',
+  mouse: 'فأرة',
+  keyboard: 'لوحة مفاتيح',
+  'cell phone': 'هاتف',
   cell_phone: 'هاتف',
+  microwave: 'ميكروويف',
+  oven: 'فرن',
+  sink: 'حوض',
+  refrigerator: 'ثلاجة',
+  book: 'كتاب',
+  clock: 'ساعة',
+  vase: 'مزهرية',
+  scissors: 'مقص',
   bottle: 'قارورة',
   cup: 'كوب',
-  backpack: 'حقيبة',
+  bowl: 'وعاء',
+  backpack: 'حقيبة ظهر',
+  umbrella: 'مظلة',
   handbag: 'حقيبة',
   suitcase: 'حقيبة سفر',
+  car: 'سيارة',
+  bus: 'حافلة',
+  truck: 'شاحنة',
+  bicycle: 'دراجة',
+  motorcycle: 'دراجة نارية',
+  'traffic light': 'إشارة مرور',
+  'stop sign': 'علامة قف',
+  bench: 'مقعد',
+  cat: 'قطة',
+  dog: 'كلب',
+  'potted plant': 'نبتة',
+  door: 'باب',
+  stairs: 'درج',
   wall: 'جدار',
   floor: 'أرضية',
   obstacle: 'عائق',
 };
 
+export const DIST_BANDS = [
+  { id: 'danger', max: 0.95, text: 'أقل من متر' },
+  { id: 'near',   max: 1.80, text: 'متر ونصف' },
+  { id: 'mid',    max: 2.80, text: 'متران ونصف' },
+  { id: 'far',    max: 4.00, text: 'أكثر من ثلاثة أمتار' },
+  { id: 'clear',  max: Infinity, text: 'مسار سالك' },
+];
+
+/** يصنّف المسافة إلى فئة مستقرة بهيستيريسيس ±0.3م حول الحدود لمنع التذبذب الصوتي. */
+export function quantizeDistanceBand(d, prevId = null, hyst = 0.3) {
+  if (d == null || !Number.isFinite(d)) return DIST_BANDS[DIST_BANDS.length - 1];
+  if (prevId) {
+    const idx = DIST_BANDS.findIndex((b) => b.id === prevId);
+    if (idx >= 0) {
+      const low = idx === 0 ? -Infinity : DIST_BANDS[idx - 1].max - hyst;
+      const high = DIST_BANDS[idx].max + hyst;
+      if (d >= low && d <= high) return DIST_BANDS[idx];
+    }
+  }
+  return DIST_BANDS.find((b) => d < b.max) || DIST_BANDS[DIST_BANDS.length - 1];
+}
+
 export function formatDistanceAr(d) {
   if (d == null || !Number.isFinite(d)) return '';
   if (d < 0.5) return 'أقل من نصف متر';
-  if (d < 0.8) return 'نصف متر تقريباً';
+  if (d < 0.85) return 'نصف متر تقريباً';
   if (d < 1.3) return 'متر واحد';
   if (d < 1.8) return 'متر ونصف';
   if (d < 2.3) return 'متران';
   if (d < 2.8) return 'متران ونصف';
-  if (d < 3.3) return 'ثلاثة أمتار';
+  if (d < 3.4) return 'ثلاثة أمتار';
   if (d < 4.0) return 'ثلاثة أمتار ونصف';
   return 'أكثر من أربعة أمتار';
 }
 
 export class RayEngine {
   constructor(opt = {}) {
-    this.camHeight = opt.camHeight ?? 1.30; // ارتفاع الهاتف عن الأرض (بالمتر) في يد الكفيف
-    this.vfov = (opt.vfovDeg ?? 60) * (Math.PI / 180); // زاوية الرؤية الرأسية للكاميرا
-    this.pitch = 0.15; // زاوية ميل الهاتف للأمام (طبيعة الإمساك باليد مائلاً قليلاً للأمام ~8.5 درجات)
+    this.camHeight = opt.camHeight ?? 1.32;
+    this.vfov = (opt.vfovDeg ?? 62) * (Math.PI / 180);
+    this.pitch = 0.16;
     this.roll = 0;
     this.heading = 0;
     this.hasGyro = false;
 
-    // كانفاس التحليل السريع منخفض الدقة (للحفاظ على سلاسة 30 إطار/ثانية وبلا تسخين للهاتف)
     this.canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
     if (this.canvas) {
       this.canvas.width = 120;
@@ -54,11 +101,16 @@ export class RayEngine {
       this.ctx = null;
     }
 
-    this.lastDist = 2.0;
-    this.target = null; // { label, dist, conf, x, y, isWall }
+    this.zones = { left: 3.5, center: 3.5, right: 3.5 };
+    this.lastDist = 2.5;
+    this.lastActiveZone = 'center';
+    this.target = null;
     this._onOrientation = this._handleOrientation.bind(this);
     this._detector = null;
     this._detectorLoading = false;
+    this._lastDetPerf = 0;
+    this._lastDetTsMs = 0;
+    this.lastDetections = [];
   }
 
   start() {
@@ -76,15 +128,12 @@ export class RayEngine {
   _handleOrientation(e) {
     if (e.beta == null) return;
     this.hasGyro = true;
-    // beta: إمالة للأمام/الخلف (-180 إلى 180 درجة). 90° = هاتف عمودي في اليد.
-    // ميل خفيف للأمام يعني beta أصغر من 90 (مثلاً 75°).
-    const deg = 85 - e.beta; // زاوية الميل للأسفل بالدرجات
-    this.pitch = Math.max(-0.4, Math.min(0.7, deg * (Math.PI / 180)));
+    const deg = 85 - e.beta;
+    this.pitch = Math.max(-0.4, Math.min(0.75, deg * (Math.PI / 180)));
     this.roll = (e.gamma || 0) * (Math.PI / 180);
     this.heading = (e.alpha || 0) * (Math.PI / 180);
   }
 
-  /** تحميل كاشف الأجسام من MediaPipe عند توفر الإنترنت، ويعمل بدون تعليق إن لم يتوفر */
   async initDetector() {
     if (this._detector || this._detectorLoading) return;
     this._detectorLoading = true;
@@ -99,8 +148,8 @@ export class RayEngine {
           delegate: 'CPU',
         },
         runningMode: 'VIDEO',
-        scoreThreshold: 0.35,
-        maxResults: 4,
+        scoreThreshold: 0.36,
+        maxResults: 5,
       });
     } catch (_) {
       this._detector = null;
@@ -109,122 +158,257 @@ export class RayEngine {
     }
   }
 
-  /**
-   * يحلل إطار الفيديو ويُطلق الشعاع نحو المركز
-   */
-  process(video, timestamp = performance.now()) {
-    if (!video || !video.videoWidth || !this.ctx) {
-      return { dist: this.lastDist, label: 'مسار سالك', isWall: false, conf: 0, hitX: 0.5, hitY: 0.5 };
+  process(video) {
+    const vw = video?.videoWidth || video?.width || 0;
+    const vh = video?.videoHeight || video?.height || 0;
+    if (!video || !vw || !this.ctx) {
+      return {
+        dist: this.lastDist, label: 'مسار سالك', dir: 'center', dirAr: 'أمامك',
+        guidance: 'وجّه الكاميرا للأمام', isWall: false, conf: 0,
+        hitX: 0.5, hitY: 0.5, zones: { ...this.zones }, dark: false, light: null,
+      };
     }
 
-    const vw = video.videoWidth, vh = video.videoHeight;
     const cw = this.canvas.width, ch = this.canvas.height;
     this.ctx.drawImage(video, 0, 0, cw, ch);
+    const imgData = this.ctx.getImageData(0, 0, cw, ch);
+    const zInfo = this._analyzeThreeZones(imgData);
 
-    let objTarget = null;
-
-    if (this._detector) {
-      try {
-        const res = this._detector.detectForVideo(video, Math.round(timestamp));
-        if (res && res.detections && res.detections.length) {
-          let bestDistToCenter = Infinity;
-          for (const det of res.detections) {
-            const bb = det.boundingBox;
-            const cx = (bb.originX + bb.width / 2) / vw;
-            const cy = (bb.originY + bb.height / 2) / vh;
-            const dCenter = Math.hypot(cx - 0.5, cy - 0.5);
-            if (dCenter < 0.35 && dCenter < bestDistToCenter) {
-              bestDistToCenter = dCenter;
-              const cat = det.categories[0];
-              const rawName = cat?.categoryName?.toLowerCase() || 'obstacle';
-              const arName = AR_LABELS[rawName] || rawName;
-              const bottomY = Math.min(1.0, (bb.originY + bb.height) / vh);
-              const estDist = this._calcDistFromRow(bottomY, bb.height / vh);
-              objTarget = {
-                dist: estDist,
-                label: arName,
-                isWall: false,
-                conf: cat?.score || 0.5,
-                hitX: cx,
-                hitY: cy,
-              };
-            }
-          }
-        }
-      } catch (_) {}
+    if (zInfo.dark) {
+      this.lastDetections = [];
+      const outDark = {
+        dist: 4.5,
+        label: 'مسار سالك',
+        dir: 'center',
+        dirAr: 'أمامك',
+        guidance: 'الكاميرا مغطاة أو في الظلام',
+        isWall: false,
+        conf: 0,
+        hitX: 0.5,
+        hitY: 0.5,
+        zones: { left: 4.5, center: 4.5, right: 4.5 },
+        dark: true,
+        light: zInfo.light,
+      };
+      this.target = outDark;
+      return outDark;
     }
 
-    const imgData = this.ctx.getImageData(0, 0, cw, ch);
-    const wallTarget = this._analyzeRayFloorWall(imgData);
-
-    let finalTarget = objTarget;
-    if (!finalTarget || (wallTarget.isWall && wallTarget.dist < finalTarget.dist - 0.4)) {
-      finalTarget = wallTarget;
+    const nowPerf = performance.now();
+    if (this._detector && nowPerf - this._lastDetPerf >= 120) {
+      this._lastDetPerf = nowPerf;
+      const tsMs = Math.max(this._lastDetTsMs + 1, Math.round(nowPerf));
+      this._lastDetTsMs = tsMs;
+      try {
+        const res = this._detector.detectForVideo(video, tsMs);
+        this.lastDetections = (res?.detections || []).map((det) => {
+          const bb = det.boundingBox;
+          const cat = det.categories?.[0];
+          const rawName = (cat?.categoryName || 'obstacle').toLowerCase();
+          const cx = (bb.originX + bb.width / 2) / vw;
+          const cy = (bb.originY + bb.height / 2) / vh;
+          const bottomY = Math.min(1.0, (bb.originY + bb.height) / vh);
+          return {
+            label: AR_LABELS[rawName] || rawName,
+            score: cat?.score || 0.5,
+            cx, cy,
+            boxW: bb.width / vw,
+            boxH: bb.height / vh,
+            dist: this._calcDistFromRow(bottomY, bb.height / vh),
+          };
+        });
+      } catch (_) {
+        // نحافظ على آخر نتائج صالحة دون تعطيل الرادار
+      }
     }
 
     const alpha = 0.35;
-    this.lastDist = alpha * finalTarget.dist + (1 - alpha) * this.lastDist;
-    finalTarget.dist = Math.round(this.lastDist * 10) / 10;
-    this.target = finalTarget;
-    return finalTarget;
+    for (const k of ['left', 'center', 'right']) {
+      this.zones[k] = Math.round((alpha * zInfo.zones[k] + (1 - alpha) * this.zones[k]) * 10) / 10;
+    }
+
+    let centerObj = null, leftObj = null, rightObj = null;
+    for (const d of this.lastDetections) {
+      const zone = d.cx < 0.36 ? 'left' : d.cx > 0.64 ? 'right' : 'center';
+      if (d.dist < this.zones[zone]) {
+        this.zones[zone] = Math.round(d.dist * 10) / 10;
+      }
+      if (zone === 'center' && (!centerObj || d.dist < centerObj.dist)) centerObj = d;
+      else if (zone === 'left' && (!leftObj || d.dist < leftObj.dist)) leftObj = d;
+      else if (zone === 'right' && (!rightObj || d.dist < rightObj.dist)) rightObj = d;
+    }
+
+    const { left, center, right } = this.zones;
+    let activeZone = 'center';
+    // هيستيريسيس لاتجاه العائق الجانبي لمنع التردد السريع بين يسار/أمام/يمين
+    const enterMargin = 0.4;
+    const keepMargin = 0.18;
+    const enterMax = 2.25;
+    const keepMax = 2.45;
+
+    if (this.lastActiveZone === 'left' && left < center - keepMargin && left < keepMax && left <= right + 0.1) {
+      activeZone = 'left';
+    } else if (this.lastActiveZone === 'right' && right < center - keepMargin && right < keepMax && right <= left + 0.1) {
+      activeZone = 'right';
+    } else if (left < center - enterMargin && left < enterMax && left <= right) {
+      activeZone = 'left';
+    } else if (right < center - enterMargin && right < enterMax && right < left) {
+      activeZone = 'right';
+    }
+    this.lastActiveZone = activeZone;
+
+    let dist = center;
+    let label = centerObj ? centerObj.label : (center <= 3.6 ? 'جدار أو حاجز' : 'مسار سالك');
+    let hitX = centerObj ? centerObj.cx : 0.5;
+    let hitY = centerObj ? centerObj.cy : zInfo.hitY.center;
+    let conf = centerObj ? centerObj.score : zInfo.conf;
+
+    if (activeZone === 'left') {
+      dist = left;
+      label = leftObj ? leftObj.label : 'عائق';
+      hitX = leftObj ? leftObj.cx : 0.22;
+      hitY = leftObj ? leftObj.cy : zInfo.hitY.left;
+    } else if (activeZone === 'right') {
+      dist = right;
+      label = rightObj ? rightObj.label : 'عائق';
+      hitX = rightObj ? rightObj.cx : 0.78;
+      hitY = rightObj ? rightObj.cy : zInfo.hitY.right;
+    }
+
+    const dirAr = activeZone === 'left' ? 'على يسارك' : activeZone === 'right' ? 'على يمينك' : 'أمامك';
+    this.lastDist = Math.round((alpha * dist + (1 - alpha) * this.lastDist) * 10) / 10;
+
+    let guidance = '';
+    if (center < 0.85) {
+      const alt = left > right + 0.4 && left > 1.6 ? ' · اتجه يساراً' : right > left + 0.4 && right > 1.6 ? ' · اتجه يميناً' : '';
+      guidance = `توقف، ${centerObj ? centerObj.label : 'عائق'} قريب جداً أمامك${alt}`;
+    } else if (center < 2.2) {
+      const freeHint = right > left + 0.5 && right > 2.2 ? ' · اليمين سالك' : left > right + 0.5 && left > 2.2 ? ' · اليسار سالك' : '';
+      guidance = `${centerObj ? centerObj.label : 'عائق'} أمامك على بعد ${formatDistanceAr(center)}${freeHint}`;
+    } else if (left < 1.15) {
+      guidance = `انتبه، ${leftObj ? leftObj.label : 'عائق'} على يسارك (${formatDistanceAr(left)})`;
+    } else if (right < 1.15) {
+      guidance = `انتبه، ${rightObj ? rightObj.label : 'عائق'} على يمينك (${formatDistanceAr(right)})`;
+    } else if (left > 3.6 && center > 3.6 && right > 3.6) {
+      guidance = 'المسار أمامك سالك';
+    } else {
+      guidance = `المسار مفتوح، أقرب حاجز ${dirAr} على بعد ${formatDistanceAr(dist)}`;
+    }
+
+    const out = {
+      dist: this.lastDist,
+      label,
+      dir: activeZone,
+      dirAr,
+      guidance,
+      isWall: !centerObj && center <= 3.6,
+      conf,
+      hitX,
+      hitY,
+      zones: { ...this.zones },
+      dark: false,
+      light: zInfo.light,
+    };
+    this.target = out;
+    return out;
   }
 
-  /** حساب المسافة المترية من رقم السطر الرأسي وزاوية الكاميرا */
   _calcDistFromRow(rowNorm, bboxHeightNorm = 0) {
-    // زاوية الميل للأسفل باتجاه الأرض (0.5 في المنتصف = أفق الكاميرا، 1.0 أسفل الإطار = أقدام المستخدم)
     const angleDown = this.pitch + (rowNorm - 0.5) * this.vfov;
-
     if (angleDown <= 0.08) {
-      // الشعاع يرتفع عن الأرض أو موازٍ لها (يتجه مباشرة للجدار المقابل)
       if (bboxHeightNorm > 0.05) {
         const d = (1.1 * 0.8) / Math.max(0.08, bboxHeightNorm);
-        return Math.min(5.0, Math.max(0.4, d));
+        return Math.min(4.8, Math.max(0.35, d));
       }
-      return 3.5;
+      return 3.6;
     }
-
     const groundDist = this.camHeight / Math.tan(angleDown);
-    return Math.min(5.0, Math.max(0.3, groundDist));
+    return Math.min(4.8, Math.max(0.3, groundDist));
   }
 
-  /**
-   * يحلل العمود المركزي للكانفاس (شعاع الليزر) لاكتشاف التقاء الأرضية بالجدار
-   */
-  _analyzeRayFloorWall(imgData) {
+  _analyzeThreeZones(imgData) {
     const cw = imgData.width, ch = imgData.height;
     const data = imgData.data;
-    const midX = Math.floor(cw / 2);
+    const bandCols = {
+      left: [Math.floor(cw * 0.14), Math.floor(cw * 0.22), Math.floor(cw * 0.30)],
+      center: [Math.floor(cw * 0.42), Math.floor(cw * 0.50), Math.floor(cw * 0.58)],
+      right: [Math.floor(cw * 0.70), Math.floor(cw * 0.78), Math.floor(cw * 0.86)],
+    };
 
-    let maxGrad = 0;
-    let baseRow = Math.floor(ch * 0.75);
+    const lumAt = (x, y) => {
+      const i = (y * cw + x) * 4;
+      return data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    };
 
-    for (let y = ch - 5; y >= Math.floor(ch * 0.25); y -= 2) {
-      let lumCur = 0, lumNext = 0;
-      for (let dx = -4; dx <= 4; dx += 2) {
-        const i1 = (y * cw + (midX + dx)) * 4;
-        const i2 = ((y - 4) * cw + (midX + dx)) * 4;
-        lumCur += data[i1] * 0.299 + data[i1 + 1] * 0.587 + data[i1 + 2] * 0.114;
-        lumNext += data[i2] * 0.299 + data[i2 + 1] * 0.587 + data[i2 + 2] * 0.114;
-      }
-      const grad = Math.abs(lumCur - lumNext);
-      if (grad > maxGrad && grad > 35) {
-        maxGrad = grad;
-        baseRow = y;
+    // فحص الظلام التام (الهاتف في الجيب أو العدسة مغطاة) لمنع ضوضاء الحساس من توليد عوائق وهمية
+    let lumSum = 0, lumCnt = 0;
+    for (let y = 8; y < ch; y += 8) {
+      for (let x = 8; x < cw; x += 8) {
+        lumSum += lumAt(x, y);
+        lumCnt++;
       }
     }
+    const avgLum = lumCnt ? lumSum / lumCnt : 0;
+    const light = Math.round(avgLum);
+    if (avgLum < 12) {
+      return {
+        zones: { left: 4.5, center: 4.5, right: 4.5 },
+        hitY: { left: 0.5, center: 0.5, right: 0.5 },
+        conf: 0,
+        dark: true,
+        light,
+      };
+    }
 
-    const rowNorm = baseRow / ch;
-    const dist = this._calcDistFromRow(rowNorm);
-    const isWall = dist <= 4.0;
-    const label = isWall ? 'جدار' : 'مسار سالك';
+    const zones = {};
+    const hitY = {};
+    let bestConf = 0.55;
 
-    return {
-      dist,
-      label,
-      isWall,
-      conf: maxGrad > 60 ? 0.85 : 0.6,
-      hitX: 0.5,
-      hitY: rowNorm,
-    };
+    for (const [k, xs] of Object.entries(bandCols)) {
+      let maxGrad = 0;
+      let baseRow = Math.floor(ch * 0.36);
+      let foundNearEdge = false;
+      let nearPeakGrad = 0;
+      let nearPeakRow = baseRow;
+
+      // المسح من أسفل الإطار (الأقرب لقدمي المستخدم) صعوداً للأفق لالتقاط قاعدة أقرب عائق على الأرض
+      // دون أن تطغى الحافة العلوية لنفس العائق وتجعل المسافة تبدو أبعد مما هي عليه
+      for (let y = ch - 6; y >= Math.floor(ch * 0.22); y -= 2) {
+        let gSum = 0;
+        for (const x of xs) {
+          gSum += Math.abs(lumAt(x, y) - lumAt(x, y - 4));
+        }
+        const gAvg = gSum / xs.length;
+
+        if (!foundNearEdge) {
+          if (gAvg >= 28) {
+            foundNearEdge = true;
+            nearPeakGrad = gAvg;
+            nearPeakRow = y;
+          } else if (gAvg > 14 && gAvg > maxGrad) {
+            maxGrad = gAvg;
+            baseRow = y;
+          }
+        } else if (nearPeakRow - y <= 8) {
+          if (gAvg > nearPeakGrad) {
+            nearPeakGrad = gAvg;
+            nearPeakRow = y;
+          }
+        } else {
+          break;
+        }
+      }
+
+      if (foundNearEdge) {
+        maxGrad = nearPeakGrad;
+        baseRow = nearPeakRow;
+      }
+      const rowNorm = baseRow / ch;
+      zones[k] = this._calcDistFromRow(rowNorm);
+      hitY[k] = rowNorm;
+      if (maxGrad > 25) bestConf = 0.82;
+    }
+
+    return { zones, hitY, conf: bestConf, dark: false, light };
   }
 }
